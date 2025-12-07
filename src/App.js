@@ -1,86 +1,40 @@
+import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import HomePage from "./pages/HomePage";
+import CommunityPage from "./pages/CommunityPage";
+import ProfilePage from "./pages/ProfilePage";
+import AdminPage from "./pages/AdminPage";
+import "./App.css";
+
 function App() {
   return (
-    <section className="section">
-      <div className="container">
-        <nav className="level">
-          <div className="level-left">
-            <div>
-              <h1 className="title is-3">MPAKT Challenges</h1>
-              <p className="subtitle is-6">
-                Kleine wekelijkse doelen, meer motivatie.
-              </p>
+    <Router>
+      <section className="section">
+        <div className="container">
+          <nav className="navbar" role="navigation" aria-label="main navigation">
+            <div className="navbar-brand">
+              <Link className="navbar-item" to="/">
+                <strong>MPAKT Challenges</strong>
+              </Link>
             </div>
-          </div>
-          <div className="level-right">
-            <button className="button is-small is-dark is-outlined">
-              Pilot januari 2026
-            </button>
-          </div>
-        </nav>
-
-        <div className="columns is-variable is-5">
-          <div className="column is-two-thirds">
-            <div className="card">
-              <div className="card-content">
-                <p className="tag is-info is-light mb-3">
-                  Challenge van deze week
-                </p>
-                <p className="title is-4">
-                  10.000 stappen + 3x krachtblok
-                </p>
-                <p className="subtitle is-6">
-                  Kies je niveau, kijk de video en vink af wanneer je klaar bent.
-                </p>
-
-                <div className="box has-background-light mb-4">
-                  Video placeholder (YouTube / upload)
-                </div>
-
-                <div className="buttons mb-4">
-                  <button className="button is-light">Light</button>
-                  <button className="button is-primary is-light">Standard</button>
-                  <button className="button is-light">Pro</button>
-                </div>
-
-                <button className="button is-success is-fullwidth">
-                  Markeer challenge als DONE
-                </button>
+            <div className="navbar-menu">
+              <div className="navbar-start">
+                <Link className="navbar-item" to="/">Home</Link>
+                <Link className="navbar-item" to="/community">Community</Link>
+                <Link className="navbar-item" to="/profile">Profiel</Link>
+                <Link className="navbar-item" to="/admin">Admin</Link>
               </div>
             </div>
-          </div>
+          </nav>
 
-          <div className="column">
-            <div className="box mb-4">
-              <p className="heading">Jouw maandprogressie</p>
-              <p className="title is-3">3/4</p>
-              <p className="subtitle is-7">
-                Challenges voltooid deze maand
-              </p>
-              <progress className="progress is-success" value="75" max="100">
-                75%
-              </progress>
-              <button className="button is-small is-fullwidth mt-2">
-                Bekijk mijn profiel
-              </button>
-            </div>
-
-            <div className="box">
-              <p className="heading">Community feed</p>
-              <p className="is-size-7 mb-3">12 nieuwe posts vandaag</p>
-              <p className="is-size-7">
-                Sarah: “Light-versie gedaan tussen meetings door.”
-              </p>
-              <p className="is-size-7">
-                Jonas: Foto gepost van de Pro-set in het park 🌳
-              </p>
-              <button className="button is-link is-light is-fullwidth mt-3">
-                Open community feed
-              </button>
-            </div>
-          </div>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/community" element={<CommunityPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/admin" element={<AdminPage />} />
+          </Routes>
         </div>
-      </div>
-    </section>
+      </section>
+    </Router>
   );
 }
 
