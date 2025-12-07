@@ -1,43 +1,86 @@
-import logo from './logo.svg';
-import './App.css';
-
 function App() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">MPAKT Challenges</h1>
+    <section className="section">
+      <div className="container">
+        <nav className="level">
+          <div className="level-left">
+            <div>
+              <h1 className="title is-3">MPAKT Challenges</h1>
+              <p className="subtitle is-6">
+                Kleine wekelijkse doelen, meer motivatie.
+              </p>
+            </div>
+          </div>
+          <div className="level-right">
+            <button className="button is-small is-dark is-outlined">
+              Pilot januari 2026
+            </button>
+          </div>
+        </nav>
+
+        <div className="columns is-variable is-5">
+          <div className="column is-two-thirds">
+            <div className="card">
+              <div className="card-content">
+                <p className="tag is-info is-light mb-3">
+                  Challenge van deze week
+                </p>
+                <p className="title is-4">
+                  10.000 stappen + 3x krachtblok
+                </p>
+                <p className="subtitle is-6">
+                  Kies je niveau, kijk de video en vink af wanneer je klaar bent.
+                </p>
+
+                <div className="box has-background-light mb-4">
+                  Video placeholder (YouTube / upload)
+                </div>
+
+                <div className="buttons mb-4">
+                  <button className="button is-light">Light</button>
+                  <button className="button is-primary is-light">Standard</button>
+                  <button className="button is-light">Pro</button>
+                </div>
+
+                <button className="button is-success is-fullwidth">
+                  Markeer challenge als DONE
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="column">
+            <div className="box mb-4">
+              <p className="heading">Jouw maandprogressie</p>
+              <p className="title is-3">3/4</p>
+              <p className="subtitle is-7">
+                Challenges voltooid deze maand
+              </p>
+              <progress className="progress is-success" value="75" max="100">
+                75%
+              </progress>
+              <button className="button is-small is-fullwidth mt-2">
+                Bekijk mijn profiel
+              </button>
+            </div>
+
+            <div className="box">
+              <p className="heading">Community feed</p>
+              <p className="is-size-7 mb-3">12 nieuwe posts vandaag</p>
+              <p className="is-size-7">
+                Sarah: “Light-versie gedaan tussen meetings door.”
+              </p>
+              <p className="is-size-7">
+                Jonas: Foto gepost van de Pro-set in het park 🌳
+              </p>
+              <button className="button is-link is-light is-fullwidth mt-3">
+                Open community feed
+              </button>
+            </div>
+          </div>
         </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 py-8">
-        {/* Challenge Overview */}
-        <section className="mb-12">
-          <h2 className="text-3xl font-bold mb-6">Week 1 Challenges</h2>
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* Challenge cards here */}
-          </div>
-        </section>
-
-        {/* Quick Actions */}
-        <section className="mb-12">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <button className="bg-indigo-600 text-white p-6 rounded-xl shadow-lg hover:bg-indigo-700">
-              <h3 className="font-semibold text-lg">My Progress</h3>
-              <p className="text-indigo-100">3/7 challenges done</p>
-            </button>
-            <button className="bg-green-600 text-white p-6 rounded-xl shadow-lg hover:bg-green-700">
-              Community
-            </button>
-            <button className="bg-purple-600 text-white p-6 rounded-xl shadow-lg hover:bg-purple-700">
-              Profile
-            </button>
-          </div>
-        </section>
-      </main>
-    </div>
+      </div>
+    </section>
   );
 }
 
