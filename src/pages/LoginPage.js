@@ -1,23 +1,36 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+
 function LoginPage() {
+    
+    localStorage.removeItem("mpakt-auth");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
+  const userRef = useRef(null);
+  const passRef = useRef(null);
+
+  // iOS PWA: focus moet “user initiated” zijn, anders geen keyboard. [web:229]
+  function safeFocus(ref) {
+    // focus synchronously; no useEffect autofocus
+    ref.current?.focus();
+  }
+
   function handleSubmit(e) {
     e.preventDefault();
     setError("");
 
-    // DEMO: vervang dit later door echte auth (API/Supabase/etc.)
+    // tijdelijk: login ok als beide leeg zijn
     if (username === "admin" && password === "admin") {
       localStorage.setItem("mpakt-auth", "1");
       navigate("/home", { replace: true });
-    } else {
-      setError("Foute gebruikersnaam of wachtwoord.");
+      return;
     }
+
+    setError("Foute gebruikersnaam of wachtwoord.");
   }
 
   return (
@@ -28,14 +41,38 @@ function LoginPage() {
         <div className="field">
           <label className="label">Gebruiker</label>
           <div className="control">
-            <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} />
+            <input
+              ref={userRef}
+              className="input"
+              type="text"
+              name="username"
+              autoComplete="username"
+              inputMode="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              onTouchStart={() => safeFocus(userRef)}
+              onMouseDown={() => safeFocus(userRef)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") passRef.current?.focus();
+              }}
+            />
           </div>
         </div>
 
         <div className="field">
           <label className="label">Wachtwoord</label>
           <div className="control">
-            <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <input
+              ref={passRef}
+              className="input"
+              type="password"
+              name="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onTouchStart={() => safeFocus(passRef)}
+              onMouseDown={() => safeFocus(passRef)}
+            />
           </div>
         </div>
 

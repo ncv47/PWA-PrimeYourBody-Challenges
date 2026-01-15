@@ -6,8 +6,8 @@ export default function MainLayout() {
   const { pathname } = useLocation();
 
   const onLoginPage = pathname === "/login";
-  const showTopNav = authed && !onLoginPage;      // web navbar boven
-  const showBottomNav = authed && !onLoginPage;   // instagram navbar onder
+  const showTopNav = authed && !onLoginPage;
+  const showBottomNav = authed && !onLoginPage;
 
   return (
     <>
