@@ -1,82 +1,149 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
+import { humanizeSupabaseError } from "../lib/humanizeError";
 
-const INITIAL_CHALLENGES = [
-  {
-    id: 1,
-    week: 3,
-    title: "10.000 stappen + 3× krachtblok",
-    active: true,
-    completedCount: 24,
-  },
-  {
-    id: 2,
-    week: 2,
-    title: "Mobility morning flow",
-    active: false,
-    completedCount: 31,
-  },
-];
+function isoWeek(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+}
+
+const LEVELS = ["Light", "Standard", "Pro"];
 
 function AdminPage() {
   const [challenges, setChallenges] = useState([]);
+  const [stats, setStats] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
   const [title, setTitle] = useState("");
-  const [week, setWeek] = useState("");
+  const [startDate, setStartDate] = useState(""); // YYYY-MM-DD
   const [videoUrl, setVideoUrl] = useState("");
   const [description, setDescription] = useState("");
 
-  // init vanuit localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem("mpakt-admin-challenges");
-    if (saved) {
-      setChallenges(JSON.parse(saved));
-    } else {
-      setChallenges(INITIAL_CHALLENGES);
+  // single select level
+  const [selectedLevel, setSelectedLevel] = useState("Standard");
+
+  const computedWeek = useMemo(() => isoWeek(startDate), [startDate]);
+
+  async function loadAll() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const { data: chData, error: chErr } = await supabase
+        .from("challenges")
+        .select("id, week, title, description, video_url, start_date, levels, active, created_at")
+        .order("week", { ascending: false })
+        .order("created_at", { ascending: false });
+
+      if (chErr) throw chErr;
+
+      const { data: stData, error: stErr } = await supabase
+        .from("challenge_stats")
+        .select("challenge_id, completed_users");
+
+      if (stErr) throw stErr;
+
+      const stMap = {};
+      (stData || []).forEach((r) => (stMap[r.challenge_id] = r.completed_users));
+
+      setChallenges(chData || []);
+      setStats(stMap);
+    } catch (e) {
+      console.error(e);
+      setError(humanizeSupabaseError(e));
+    } finally {
+      setLoading(false);
     }
+  }
+
+  useEffect(() => {
+    loadAll();
   }, []);
 
-  // opslaan bij wijziging
-  useEffect(() => {
-    localStorage.setItem("mpakt-admin-challenges", JSON.stringify(challenges));
-  }, [challenges]);
-
-  function handleAddChallenge(e) {
+  async function handleAddChallenge(e) {
     e.preventDefault();
-    if (!title.trim() || !week) return;
+    setError("");
 
-    const newChallenge = {
-      id: Date.now(),
-      week: Number(week),
-      title: title.trim(),
-      active: false,
-      completedCount: 0,
-      videoUrl: videoUrl.trim(),
-      description: description.trim(),
-    };
+    try {
+      if (!title.trim() || !startDate) {
+        setError("Vul minstens een titel en startdatum in.");
+        return;
+      }
 
-    setChallenges((prev) => [...prev, newChallenge]);
-    setTitle("");
-    setWeek("");
-    setVideoUrl("");
-    setDescription("");
+      const payload = {
+        title: title.trim(),
+        description: description.trim() || null,
+        video_url: videoUrl.trim() || null,
+        start_date: startDate, // date-only [web:291]
+        levels: [selectedLevel], // single select stored as 1-item array
+        active: false,
+      };
+
+      const { data, error: insErr } = await supabase
+        .from("challenges")
+        .insert(payload)
+        .select()
+        .single();
+
+      if (insErr) throw insErr;
+
+      setChallenges((prev) => [data, ...prev]);
+
+      setTitle("");
+      setStartDate("");
+      setVideoUrl("");
+      setDescription("");
+      setSelectedLevel("Standard");
+    } catch (e) {
+      console.error(e);
+      setError(humanizeSupabaseError(e));
+    }
   }
 
-  function toggleActive(id) {
-    setChallenges((prev) =>
-      prev.map((ch) =>
-        ch.id === id ? { ...ch, active: !ch.active } : ch
-      )
-    );
+  async function toggleActive(ch) {
+    setError("");
+    try {
+      const { data, error: updErr } = await supabase
+        .from("challenges")
+        .update({ active: !ch.active })
+        .eq("id", ch.id)
+        .select()
+        .single();
+
+      if (updErr) throw updErr;
+
+      setChallenges((prev) => prev.map((x) => (x.id === ch.id ? data : x)));
+    } catch (e) {
+      console.error(e);
+      setError(humanizeSupabaseError(e));
+    }
   }
 
-  function handleDelete(id) {
-    setChallenges((prev) => prev.filter((ch) => ch.id !== id));
+  async function handleDelete(ch) {
+    setError("");
+    try {
+      const { error: delErr } = await supabase.from("challenges").delete().eq("id", ch.id);
+      if (delErr) throw delErr;
+      setChallenges((prev) => prev.filter((x) => x.id !== ch.id));
+    } catch (e) {
+      console.error(e);
+      setError(humanizeSupabaseError(e));
+    }
   }
 
   return (
     <div className="columns">
-      {/* Overzicht challenges */}
       <div className="column is-two-thirds">
         <h2 className="title is-4">Admin · Challenges beheren</h2>
+
+        {error && <p className="notification is-danger is-light">{error}</p>}
+        {loading && <p className="has-text-grey">Laden...</p>}
 
         <table className="table is-fullwidth is-hoverable is-narrow">
           <thead>
@@ -96,28 +163,26 @@ function AdminPage() {
                 <td>
                   <button
                     type="button"
-                    className={
-                      "button is-small " +
-                      (ch.active ? "is-success is-light" : "is-light")
-                    }
-                    onClick={() => toggleActive(ch.id)}
+                    className={"button is-small " + (ch.active ? "is-success is-light" : "is-light")}
+                    onClick={() => toggleActive(ch)}
                   >
                     {ch.active ? "Actief" : "Inactief"}
                   </button>
                 </td>
-                <td>{ch.completedCount} gebruikers</td>
+                <td>{stats[ch.id] ?? 0} gebruikers</td>
                 <td className="has-text-right">
                   <button
                     type="button"
                     className="button is-small is-danger is-light"
-                    onClick={() => handleDelete(ch.id)}
+                    onClick={() => handleDelete(ch)}
                   >
                     Verwijderen
                   </button>
                 </td>
               </tr>
             ))}
-            {challenges.length === 0 && (
+
+            {!loading && challenges.length === 0 && (
               <tr>
                 <td colSpan="5" className="has-text-centered has-text-grey">
                   Nog geen challenges aangemaakt.
@@ -128,24 +193,23 @@ function AdminPage() {
         </table>
       </div>
 
-      {/* Formulier nieuwe challenge */}
       <div className="column">
         <div className="box">
           <h3 className="title is-5">Nieuwe challenge</h3>
 
           <form onSubmit={handleAddChallenge}>
             <div className="field">
-              <label className="label">Weeknummer</label>
+              <label className="label">Startdatum</label>
               <div className="control">
                 <input
                   className="input"
-                  type="number"
-                  min="1"
-                  value={week}
-                  onChange={(e) => setWeek(e.target.value)}
-                  placeholder="Bijv. 4"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  required
                 />
               </div>
+              {startDate && <p className="help">Weeknummer (automatisch): {computedWeek}</p>}
             </div>
 
             <div className="field">
@@ -181,9 +245,26 @@ function AdminPage() {
                   type="text"
                   value={videoUrl}
                   onChange={(e) => setVideoUrl(e.target.value)}
-                  placeholder="YouTube of upload‑link (optioneel)"
+                  placeholder="YouTube link (optioneel)"
                 />
               </div>
+            </div>
+
+            <div className="field">
+              <label className="label">Level</label>
+              <div className="buttons">
+                {LEVELS.map((lvl) => (
+                  <button
+                    key={lvl}
+                    type="button"
+                    className={"button " + (selectedLevel === lvl ? "is-primary" : "is-light")}
+                    onClick={() => setSelectedLevel(lvl)}
+                  >
+                    {lvl}
+                  </button>
+                ))}
+              </div>
+              <p className="help">Je kiest één level voor deze challenge.</p>
             </div>
 
             <div className="field is-grouped is-grouped-right">
@@ -197,13 +278,11 @@ function AdminPage() {
         </div>
 
         <div className="box">
-          <p className="heading">Snelle stats (dummy)</p>
+          <p className="heading">Snelle stats</p>
           <p className="title is-4">
-            {challenges.reduce((sum, ch) => sum + ch.completedCount, 0)}
+            {Object.values(stats).reduce((sum, n) => sum + (n || 0), 0)}
           </p>
-          <p className="subtitle is-7">
-            Totale aantal voltooide challenges (alle weken samen)
-          </p>
+          <p className="subtitle is-7">Totale unieke gebruikers-checkins (per challenge)</p>
         </div>
       </div>
     </div>
