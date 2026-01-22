@@ -1,188 +1,208 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { humanizeSupabaseError } from "../lib/humanizeError";
 
 function CommunityPage() {
+  const [activeChallenge, setActiveChallenge] = useState(null);
+
   const [posts, setPosts] = useState([]);
-  const [likeCounts, setLikeCounts] = useState({}); // post_id -> count
-  const [likedByMe, setLikedByMe] = useState(new Set()); // post_ids
-  const [userMap, setUserMap] = useState({}); // user_id -> display_name
+  const [likeCounts, setLikeCounts] = useState({});
+  const [likedByMe, setLikedByMe] = useState(new Set());
+  const [userMap, setUserMap] = useState({});
+
   const [newText, setNewText] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const likedByMeMemo = useMemo(() => likedByMe, [likedByMe]);
-
-  async function loadFeed() {
+  async function loadAll() {
     setLoading(true);
     setError("");
 
-    const { data: authData, error: userErr } = await supabase.auth.getUser();
-    if (userErr) {
-      setError(userErr.message);
+    try {
+      const { data: ch, error: chErr } = await supabase
+        .from("challenges")
+        .select("id, week, title")
+        .eq("active", true)
+        .order("week", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (chErr) throw chErr;
+
+      setActiveChallenge(ch || null);
+      if (!ch) {
+        setPosts([]);
+        setLoading(false);
+        return;
+      }
+
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr) throw authErr;
+      const me = authData.user;
+
+      const { data: postRows, error: postErr } = await supabase
+        .from("posts")
+        .select("id, user_id, text, image_url, created_at, challenge_id")
+        .eq("challenge_id", ch.id)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (postErr) throw postErr;
+
+      const rows = postRows || [];
+      setPosts(rows);
+
+      const authorIds = [...new Set(rows.map((p) => p.user_id))].filter(Boolean);
+      if (authorIds.length) {
+        const { data: usersRows, error: uErr } = await supabase
+          .from("users")
+          .select("id, display_name")
+          .in("id", authorIds);
+        if (uErr) throw uErr;
+
+        const map = {};
+        (usersRows || []).forEach((u) => (map[u.id] = u.display_name || "Gebruiker"));
+        setUserMap(map);
+      } else {
+        setUserMap({});
+      }
+
+      const postIds = rows.map((p) => p.id);
+      if (postIds.length) {
+        const { data: likeRows, error: lErr } = await supabase
+          .from("post_like_counts")
+          .select("post_id, like_count")
+          .in("post_id", postIds);
+        if (lErr) throw lErr;
+
+        const lc = {};
+        (likeRows || []).forEach((r) => (lc[r.post_id] = r.like_count));
+        setLikeCounts(lc);
+      } else {
+        setLikeCounts({});
+      }
+
+      if (me && postIds.length) {
+        const { data: myLikes, error: mlErr } = await supabase
+          .from("post_likes")
+          .select("post_id")
+          .eq("user_id", me.id)
+          .in("post_id", postIds);
+        if (mlErr) throw mlErr;
+
+        setLikedByMe(new Set((myLikes || []).map((r) => r.post_id)));
+      } else {
+        setLikedByMe(new Set());
+      }
+    } catch (e) {
+      console.error(e);
+      setError(humanizeSupabaseError(e));
+    } finally {
       setLoading(false);
-      return;
     }
-    const me = authData.user;
-
-    // 1) posts
-    const { data: postRows, error: postErr } = await supabase
-      .from("posts")
-      .select("id, user_id, text, image_url, created_at")
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (postErr) {
-      setError(postErr.message);
-      setLoading(false);
-      return;
-    }
-
-    const rows = postRows || [];
-    setPosts(rows);
-
-    // 2) usernames (display_name) from public.users
-    const authorIds = [...new Set(rows.map((p) => p.user_id))].filter(Boolean);
-
-    if (authorIds.length) {
-      const { data: usersRows, error: uErr } = await supabase
-        .from("users")
-        .select("id, display_name")
-        .in("id", authorIds);
-
-      if (uErr) {
-        setError(uErr.message);
-        setLoading(false);
-        return;
-      }
-
-      const map = {};
-      (usersRows || []).forEach((u) => {
-        map[u.id] = u.display_name || "Gebruiker";
-      });
-      setUserMap(map);
-    } else {
-      setUserMap({});
-    }
-
-    // 3) like counts (view)
-    const postIds = rows.map((p) => p.id);
-    if (postIds.length) {
-      const { data: likeRows, error: lErr } = await supabase
-        .from("post_like_counts")
-        .select("post_id, like_count")
-        .in("post_id", postIds);
-
-      if (lErr) {
-        setError(lErr.message);
-        setLoading(false);
-        return;
-      }
-
-      const lc = {};
-      (likeRows || []).forEach((r) => (lc[r.post_id] = r.like_count));
-      setLikeCounts(lc);
-    } else {
-      setLikeCounts({});
-    }
-
-    // 4) which posts did I like?
-    if (me && postIds.length) {
-      const { data: myLikes, error: mlErr } = await supabase
-        .from("post_likes")
-        .select("post_id")
-        .eq("user_id", me.id)
-        .in("post_id", postIds);
-
-      if (mlErr) {
-        setError(mlErr.message);
-        setLoading(false);
-        return;
-      }
-
-      setLikedByMe(new Set((myLikes || []).map((r) => r.post_id)));
-    } else {
-      setLikedByMe(new Set());
-    }
-
-    setLoading(false);
   }
 
   useEffect(() => {
-    loadFeed();
+    loadAll();
   }, []);
 
   async function handleAddPost(e) {
     e.preventDefault();
     setError("");
 
-    const text = newText.trim();
-    if (!text) return;
+    try {
+      if (!activeChallenge) {
+        setError("Geen actieve challenge om aan te koppelen.");
+        return;
+      }
 
-    const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr) return setError(authErr.message);
-    if (!authData.user) return setError("Niet ingelogd.");
+      const text = newText.trim();
+      if (!text) return;
 
-    const { data: inserted, error: insErr } = await supabase
-      .from("posts")
-      .insert({
-        user_id: authData.user.id,
-        text,
-        image_url: null, // later: Supabase Storage
-      })
-      .select()
-      .single(); // return inserted row [web:47]
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr) throw authErr;
+      if (!authData.user) {
+        setError("Je bent niet ingelogd. Log opnieuw in.");
+        return;
+      }
 
-    if (insErr) return setError(insErr.message);
+      const { data: inserted, error: insErr } = await supabase
+        .from("posts")
+        .insert({
+          user_id: authData.user.id,
+          challenge_id: activeChallenge.id,
+          text,
+          image_url: null,
+        })
+        .select()
+        .single();
 
-    setPosts((prev) => [inserted, ...prev]);
-    setLikeCounts((prev) => ({ ...prev, [inserted.id]: 0 }));
-    setNewText("");
+      if (insErr) throw insErr;
+
+      setPosts((prev) => [inserted, ...prev]);
+      setLikeCounts((prev) => ({ ...prev, [inserted.id]: 0 }));
+      setNewText("");
+    } catch (e) {
+      console.error(e);
+      setError(humanizeSupabaseError(e));
+    }
   }
 
   async function toggleLike(postId) {
     setError("");
 
-    const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr) return setError(authErr.message);
-    const me = authData.user;
-    if (!me) return setError("Niet ingelogd.");
+    try {
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr) throw authErr;
+      const me = authData.user;
+      if (!me) {
+        setError("Je bent niet ingelogd. Log opnieuw in.");
+        return;
+      }
 
-    const isLiked = likedByMeMemo.has(postId);
+      const isLiked = likedByMe.has(postId);
 
-    if (isLiked) {
-      const { error: delErr } = await supabase
-        .from("post_likes")
-        .delete()
-        .eq("post_id", postId)
-        .eq("user_id", me.id);
+      if (isLiked) {
+        const { error: delErr } = await supabase
+          .from("post_likes")
+          .delete()
+          .eq("post_id", postId)
+          .eq("user_id", me.id);
+        if (delErr) throw delErr;
 
-      if (delErr) return setError(delErr.message);
+        setLikedByMe((prev) => {
+          const next = new Set(prev);
+          next.delete(postId);
+          return next;
+        });
+        setLikeCounts((prev) => ({ ...prev, [postId]: Math.max(0, (prev[postId] || 0) - 1) }));
+        return;
+      }
 
-      setLikedByMe((prev) => {
-        const next = new Set(prev);
-        next.delete(postId);
-        return next;
+      const { error: insErr } = await supabase.from("post_likes").insert({
+        post_id: postId,
+        user_id: me.id,
       });
-      setLikeCounts((prev) => ({ ...prev, [postId]: Math.max(0, (prev[postId] || 0) - 1) }));
-      return;
+      if (insErr) throw insErr;
+
+      setLikedByMe((prev) => new Set([...prev, postId]));
+      setLikeCounts((prev) => ({ ...prev, [postId]: (prev[postId] || 0) + 1 }));
+    } catch (e) {
+      console.error(e);
+      setError(humanizeSupabaseError(e));
     }
-
-    const { error: insErr } = await supabase.from("post_likes").insert({
-      post_id: postId,
-      user_id: me.id,
-    });
-
-    if (insErr) return setError(insErr.message);
-
-    setLikedByMe((prev) => new Set([...prev, postId]));
-    setLikeCounts((prev) => ({ ...prev, [postId]: (prev[postId] || 0) + 1 }));
   }
 
   return (
     <div className="columns is-centered">
       <div className="column is-two-thirds">
         <h2 className="title is-4">Community feed</h2>
-        <p className="subtitle is-6">Deel je feedback en motiveer elkaar.</p>
+
+        {activeChallenge ? (
+          <p className="subtitle is-6">
+            Voor challenge week {activeChallenge.week}: {activeChallenge.title}
+          </p>
+        ) : (
+          <p className="subtitle is-6">Geen actieve challenge.</p>
+        )}
 
         {error && <p className="notification is-danger is-light">{error}</p>}
         {loading && <p className="has-text-grey">Laden...</p>}
@@ -207,7 +227,7 @@ function CommunityPage() {
               </button>
             </p>
             <p className="control">
-              <button type="submit" className="button is-link">
+              <button type="submit" className="button is-link" disabled={!activeChallenge}>
                 Posten
               </button>
             </p>
@@ -255,8 +275,8 @@ function CommunityPage() {
           );
         })}
 
-        {!loading && posts.length === 0 && (
-          <p className="has-text-grey">Nog geen posts. Zet de eerste!</p>
+        {!loading && activeChallenge && posts.length === 0 && (
+          <p className="has-text-grey">Nog geen posts voor deze challenge. Zet de eerste!</p>
         )}
       </div>
     </div>
