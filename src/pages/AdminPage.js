@@ -1,18 +1,33 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { humanizeSupabaseError } from "../lib/humanizeError";
+
+// ISO week number helper (frontend display)
+// DB berekent ook week uit start_date, maar dit is voor directe feedback in UI.
+function isoWeek(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  return Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+}
 
 function AdminPage() {
   const [challenges, setChallenges] = useState([]);
-  const [stats, setStats] = useState({}); // challenge_id -> completed_users
+  const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const [title, setTitle] = useState("");
-  const [week, setWeek] = useState("");
+  const [startDate, setStartDate] = useState(""); // YYYY-MM-DD
+  const [deadlineDate, setDeadlineDate] = useState(""); // YYYY-MM-DD
   const [videoUrl, setVideoUrl] = useState("");
   const [description, setDescription] = useState("");
-  const [deadline, setDeadline] = useState(""); // optional: "2026-01-31T23:59"
   const [levels, setLevels] = useState("Light,Standard,Pro");
+
+  const computedWeek = useMemo(() => isoWeek(startDate), [startDate]);
 
   const levelsArray = useMemo(
     () =>
@@ -27,34 +42,32 @@ function AdminPage() {
     setLoading(true);
     setError("");
 
-    const { data: chData, error: chErr } = await supabase
-      .from("challenges")
-      .select("id, week, title, description, video_url, deadline, levels, active, created_at")
-      .order("week", { ascending: false })
-      .order("created_at", { ascending: false });
+    try {
+      const { data: chData, error: chErr } = await supabase
+        .from("challenges")
+        .select("id, week, title, description, video_url, start_date, deadline_date, levels, active, created_at")
+        .order("week", { ascending: false })
+        .order("created_at", { ascending: false });
 
-    if (chErr) {
-      setError(chErr.message);
+      if (chErr) throw chErr;
+
+      const { data: stData, error: stErr } = await supabase
+        .from("challenge_stats")
+        .select("challenge_id, completed_users");
+
+      if (stErr) throw stErr;
+
+      const stMap = {};
+      (stData || []).forEach((r) => (stMap[r.challenge_id] = r.completed_users));
+
+      setChallenges(chData || []);
+      setStats(stMap);
+    } catch (e) {
+      console.error(e);
+      setError(humanizeSupabaseError(e));
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { data: stData, error: stErr } = await supabase
-      .from("challenge_stats")
-      .select("challenge_id, completed_users");
-
-    if (stErr) {
-      setError(stErr.message);
-      setLoading(false);
-      return;
-    }
-
-    const stMap = {};
-    (stData || []).forEach((r) => (stMap[r.challenge_id] = r.completed_users));
-
-    setChallenges(chData || []);
-    setStats(stMap);
-    setLoading(false);
   }
 
   useEffect(() => {
@@ -65,63 +78,73 @@ function AdminPage() {
     e.preventDefault();
     setError("");
 
-    if (!title.trim() || !week) return;
+    try {
+      if (!title.trim() || !startDate) {
+        setError("Vul minstens een titel en startdatum in.");
+        return;
+      }
 
-    const payload = {
-      week: Number(week),
-      title: title.trim(),
-      description: description.trim() || null,
-      video_url: videoUrl.trim() || null,
-      deadline: deadline ? new Date(deadline).toISOString() : null,
-      levels: levelsArray.length ? levelsArray : ["Light", "Standard", "Pro"],
-      active: false,
-    };
+      const payload = {
+        title: title.trim(),
+        description: description.trim() || null,
+        video_url: videoUrl.trim() || null,
+        start_date: startDate, // date-only; browser gives YYYY-MM-DD [web:291]
+        deadline_date: deadlineDate || null,
+        levels: levelsArray.length ? levelsArray : ["Light", "Standard", "Pro"],
+        active: false,
+        // week wordt in DB gezet via trigger op start_date
+      };
 
-    const { data, error: insErr } = await supabase
-      .from("challenges")
-      .insert(payload)
-      .select()
-      .single(); // return inserted row [web:47]
+      const { data, error: insErr } = await supabase
+        .from("challenges")
+        .insert(payload)
+        .select()
+        .single();
 
-    if (insErr) {
-      setError(insErr.message);
-      return;
+      if (insErr) throw insErr;
+
+      setChallenges((prev) => [data, ...prev]);
+      setTitle("");
+      setStartDate("");
+      setDeadlineDate("");
+      setVideoUrl("");
+      setDescription("");
+      setLevels("Light,Standard,Pro");
+    } catch (e) {
+      console.error(e);
+      setError(humanizeSupabaseError(e));
     }
-
-    setChallenges((prev) => [data, ...prev]);
-    setTitle("");
-    setWeek("");
-    setVideoUrl("");
-    setDescription("");
-    setDeadline("");
-    setLevels("Light,Standard,Pro");
   }
 
   async function toggleActive(ch) {
     setError("");
-    const { data, error: updErr } = await supabase
-      .from("challenges")
-      .update({ active: !ch.active })
-      .eq("id", ch.id)
-      .select()
-      .single();
+    try {
+      const { data, error: updErr } = await supabase
+        .from("challenges")
+        .update({ active: !ch.active })
+        .eq("id", ch.id)
+        .select()
+        .single();
 
-    if (updErr) {
-      setError(updErr.message);
-      return;
+      if (updErr) throw updErr;
+
+      setChallenges((prev) => prev.map((x) => (x.id === ch.id ? data : x)));
+    } catch (e) {
+      console.error(e);
+      setError(humanizeSupabaseError(e));
     }
-
-    setChallenges((prev) => prev.map((x) => (x.id === ch.id ? data : x)));
   }
 
   async function handleDelete(ch) {
     setError("");
-    const { error: delErr } = await supabase.from("challenges").delete().eq("id", ch.id);
-    if (delErr) {
-      setError(delErr.message);
-      return;
+    try {
+      const { error: delErr } = await supabase.from("challenges").delete().eq("id", ch.id);
+      if (delErr) throw delErr;
+      setChallenges((prev) => prev.filter((x) => x.id !== ch.id));
+    } catch (e) {
+      console.error(e);
+      setError(humanizeSupabaseError(e));
     }
-    setChallenges((prev) => prev.filter((x) => x.id !== ch.id));
   }
 
   return (
@@ -150,9 +173,7 @@ function AdminPage() {
                 <td>
                   <button
                     type="button"
-                    className={
-                      "button is-small " + (ch.active ? "is-success is-light" : "is-light")
-                    }
+                    className={"button is-small " + (ch.active ? "is-success is-light" : "is-light")}
                     onClick={() => toggleActive(ch)}
                   >
                     {ch.active ? "Actief" : "Inactief"}
@@ -188,17 +209,19 @@ function AdminPage() {
 
           <form onSubmit={handleAddChallenge}>
             <div className="field">
-              <label className="label">Weeknummer</label>
+              <label className="label">Startdatum</label>
               <div className="control">
                 <input
                   className="input"
-                  type="number"
-                  min="1"
-                  value={week}
-                  onChange={(e) => setWeek(e.target.value)}
-                  placeholder="Bijv. 4"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  required
                 />
               </div>
+              {startDate && (
+                <p className="help">Weeknummer (automatisch): {computedWeek}</p>
+              )}
             </div>
 
             <div className="field">
@@ -234,7 +257,7 @@ function AdminPage() {
                   type="text"
                   value={videoUrl}
                   onChange={(e) => setVideoUrl(e.target.value)}
-                  placeholder="YouTube of upload‑link (optioneel)"
+                  placeholder="YouTube link (optioneel)"
                 />
               </div>
             </div>
@@ -244,9 +267,9 @@ function AdminPage() {
               <div className="control">
                 <input
                   className="input"
-                  type="datetime-local"
-                  value={deadline}
-                  onChange={(e) => setDeadline(e.target.value)}
+                  type="date"
+                  value={deadlineDate}
+                  onChange={(e) => setDeadlineDate(e.target.value)}
                 />
               </div>
             </div>
