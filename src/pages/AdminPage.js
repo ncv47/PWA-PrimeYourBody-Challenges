@@ -2,8 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { humanizeSupabaseError } from "../lib/humanizeError";
 
-// ISO week number helper (frontend display)
-// DB berekent ook week uit start_date, maar dit is voor directe feedback in UI.
 function isoWeek(dateStr) {
   if (!dateStr) return "";
   const d = new Date(dateStr + "T00:00:00");
@@ -14,6 +12,8 @@ function isoWeek(dateStr) {
   return Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
 }
 
+const LEVELS = ["Light", "Standard", "Pro"];
+
 function AdminPage() {
   const [challenges, setChallenges] = useState([]);
   const [stats, setStats] = useState({});
@@ -22,21 +22,13 @@ function AdminPage() {
 
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState(""); // YYYY-MM-DD
-  const [deadlineDate, setDeadlineDate] = useState(""); // YYYY-MM-DD
   const [videoUrl, setVideoUrl] = useState("");
   const [description, setDescription] = useState("");
-  const [levels, setLevels] = useState("Light,Standard,Pro");
+
+  // single select level
+  const [selectedLevel, setSelectedLevel] = useState("Standard");
 
   const computedWeek = useMemo(() => isoWeek(startDate), [startDate]);
-
-  const levelsArray = useMemo(
-    () =>
-      levels
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    [levels]
-  );
 
   async function loadAll() {
     setLoading(true);
@@ -45,7 +37,7 @@ function AdminPage() {
     try {
       const { data: chData, error: chErr } = await supabase
         .from("challenges")
-        .select("id, week, title, description, video_url, start_date, deadline_date, levels, active, created_at")
+        .select("id, week, title, description, video_url, start_date, levels, active, created_at")
         .order("week", { ascending: false })
         .order("created_at", { ascending: false });
 
@@ -88,11 +80,9 @@ function AdminPage() {
         title: title.trim(),
         description: description.trim() || null,
         video_url: videoUrl.trim() || null,
-        start_date: startDate, // date-only; browser gives YYYY-MM-DD [web:291]
-        deadline_date: deadlineDate || null,
-        levels: levelsArray.length ? levelsArray : ["Light", "Standard", "Pro"],
+        start_date: startDate, // date-only [web:291]
+        levels: [selectedLevel], // single select stored as 1-item array
         active: false,
-        // week wordt in DB gezet via trigger op start_date
       };
 
       const { data, error: insErr } = await supabase
@@ -104,12 +94,12 @@ function AdminPage() {
       if (insErr) throw insErr;
 
       setChallenges((prev) => [data, ...prev]);
+
       setTitle("");
       setStartDate("");
-      setDeadlineDate("");
       setVideoUrl("");
       setDescription("");
-      setLevels("Light,Standard,Pro");
+      setSelectedLevel("Standard");
     } catch (e) {
       console.error(e);
       setError(humanizeSupabaseError(e));
@@ -219,9 +209,7 @@ function AdminPage() {
                   required
                 />
               </div>
-              {startDate && (
-                <p className="help">Weeknummer (automatisch): {computedWeek}</p>
-              )}
+              {startDate && <p className="help">Weeknummer (automatisch): {computedWeek}</p>}
             </div>
 
             <div className="field">
@@ -263,27 +251,20 @@ function AdminPage() {
             </div>
 
             <div className="field">
-              <label className="label">Deadline (optioneel)</label>
-              <div className="control">
-                <input
-                  className="input"
-                  type="date"
-                  value={deadlineDate}
-                  onChange={(e) => setDeadlineDate(e.target.value)}
-                />
+              <label className="label">Level</label>
+              <div className="buttons">
+                {LEVELS.map((lvl) => (
+                  <button
+                    key={lvl}
+                    type="button"
+                    className={"button " + (selectedLevel === lvl ? "is-primary" : "is-light")}
+                    onClick={() => setSelectedLevel(lvl)}
+                  >
+                    {lvl}
+                  </button>
+                ))}
               </div>
-            </div>
-
-            <div className="field">
-              <label className="label">Levels (comma separated)</label>
-              <div className="control">
-                <input
-                  className="input"
-                  type="text"
-                  value={levels}
-                  onChange={(e) => setLevels(e.target.value)}
-                />
-              </div>
+              <p className="help">Je kiest één level voor deze challenge.</p>
             </div>
 
             <div className="field is-grouped is-grouped-right">
