@@ -5,12 +5,17 @@ import { humanizeSupabaseError } from "../lib/humanizeError";
 function HomePage() {
   const [challenge, setChallenge] = useState(null);
   const [selectedLevel, setSelectedLevel] = useState("Standard");
-  const [doneOnce, setDoneOnce] = useState(false); // 1x DONE
+  const [doneOnce, setDoneOnce] = useState(false);
   const [monthlyTotal, setMonthlyTotal] = useState(0);
-  const [doneCountWeek, setDoneCountWeek] = useState(0); // blijft zichtbaar (kan 1 worden)
+  const [doneCountWeek, setDoneCountWeek] = useState(0);
   const [error, setError] = useState("");
 
+  // New: badges & points
+  const [badges, setBadges] = useState([]);
+  const [totalPoints, setTotalPoints] = useState(0);
+
   const monthlyPercent = useMemo(() => Math.min(100, (monthlyTotal / 4) * 100), [monthlyTotal]);
+  const monthBadgeEarned = useMemo(() => badges.some((b) => b.badge_name === "month_4x"), [badges]);
 
   async function load() {
     setError("");
@@ -34,7 +39,6 @@ function HomePage() {
       const user = authData.user;
       if (!user || !ch) return;
 
-      // Check if user already has a checkin for this challenge (unique constraint exists)
       const { data: row, error: selErr } = await supabase
         .from("challenge_checkins")
         .select("id")
@@ -48,7 +52,7 @@ function HomePage() {
       setDoneOnce(already);
       setDoneCountWeek(already ? 1 : 0);
 
-      // Monthly total = distinct challenges checkin this month (cap 4)
+      // Monthly total
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
@@ -63,6 +67,18 @@ function HomePage() {
 
       const distinct = new Set((monthRows || []).map((r) => r.challenge_id));
       setMonthlyTotal(Math.min(4, distinct.size));
+
+      // NEW: Badges & Points
+      const { data: badgeRows, error: bErr } = await supabase
+        .from("user_badges")
+        .select("badge_name, points")
+        .eq("user_id", user.id);
+
+      if (bErr) throw bErr;
+
+      setBadges(badgeRows || []);
+      const pts = (badgeRows || []).reduce((sum, b) => sum + (b.points || 0), 0);
+      setTotalPoints(pts);
     } catch (e) {
       console.error(e);
       setError(humanizeSupabaseError(e));
@@ -98,7 +114,7 @@ function HomePage() {
       setDoneOnce(true);
       setDoneCountWeek(1);
 
-      // update monthlyTotal quickly
+      // Reload monthly & badges na insert
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
@@ -112,6 +128,18 @@ function HomePage() {
       if (monthRows) {
         const distinct = new Set(monthRows.map((r) => r.challenge_id));
         setMonthlyTotal(Math.min(4, distinct.size));
+      }
+
+      // Check badges
+      const { data: badgeRows } = await supabase
+        .from("user_badges")
+        .select("badge_name, points")
+        .eq("user_id", user.id);
+
+      if (badgeRows) {
+        setBadges(badgeRows);
+        const pts = badgeRows.reduce((sum, b) => sum + (b.points || 0), 0);
+        setTotalPoints(pts);
       }
     } catch (e) {
       console.error(e);
@@ -183,6 +211,15 @@ function HomePage() {
       </div>
 
       <div className="column">
+        {/* BADGE & POINTS */}
+        {monthBadgeEarned && (
+          <div className="box mb-4 has-background-warning-light">
+            <p className="heading has-text-centered">🎉 MAANDBADGE BEHAALD! 🎉</p>
+            <p className="title is-5 has-text-centered">4 challenges deze maand</p>
+            <p className="subtitle is-7 has-text-centered">Je bent een kampioen! Volgen volgende maand?</p>
+          </div>
+        )}
+
         <div className="box mb-4">
           <p className="heading">Jouw maandprogressie</p>
           <p className="title is-3">{monthlyTotal}/4</p>
@@ -191,6 +228,14 @@ function HomePage() {
             {monthlyPercent}%
           </progress>
           <p className="is-size-7 has-text-grey">Nog {Math.max(0, 4 - monthlyTotal)} tot je maandbadge.</p>
+        </div>
+
+        {/* POINTS */}
+        <div className="box mb-4">
+          <p className="heading">Jouw punten</p>
+          <p className="title is-3">{totalPoints}</p>
+          <p className="subtitle is-7">Totale punten verdiend</p>
+          <p className="is-size-7 has-text-grey">+100 punten per maandbadge! 🏆</p>
         </div>
 
         <div className="box">
