@@ -41,7 +41,6 @@ const CommunityPage: React.FC = () => {
 
     const postsRaw = (data || []) as any[];
 
-    // likes ophalen
     const postIds = postsRaw.map((p) => p.id);
     let likesByPost: Record<number, number> = {};
     let likedByMe: Record<number, boolean> = {};
@@ -82,16 +81,28 @@ const CommunityPage: React.FC = () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { error: postError } = await supabase.from('posts').insert({
-      user_id: user.id,
-      text: newPost,
-      is_admin_post: false,
-    });
+    const { data, error: postError } = await supabase
+      .from('posts')
+      .insert({
+        user_id: user.id,
+        text: newPost,
+        is_admin_post: false,
+      })
+      .select('*, users(display_name, admin)')
+      .maybeSingle();
 
-    if (!postError) {
+    if (!postError && data) {
+      // Direct in de lijst pushen zonder volledige refetch
+      setPosts((prev) => [
+        {
+          ...(data as any),
+          like_count: 0,
+          liked_by_me: false,
+        },
+        ...prev,
+      ]);
       setNewPost('');
-      fetchPosts();
-    } else {
+    } else if (postError) {
       alert(postError.message);
     }
   };
@@ -101,22 +112,63 @@ const CommunityPage: React.FC = () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // Optimistisch UI updaten
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === post.id
+          ? {
+              ...p,
+              liked_by_me: !p.liked_by_me,
+              like_count: p.like_count + (p.liked_by_me ? -1 : 1),
+            }
+          : p
+      )
+    );
+
     if (post.liked_by_me) {
-      // Unlike
-      await supabase
+      // was geliked → unlike op server
+      const { error } = await supabase
         .from('post_likes')
         .delete()
         .eq('post_id', post.id)
         .eq('user_id', user.id);
+
+      if (error) {
+        // rollback bij error
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === post.id
+              ? {
+                  ...p,
+                  liked_by_me: true,
+                  like_count: p.like_count + 1,
+                }
+              : p
+          )
+        );
+      }
     } else {
-      // Like
-      await supabase.from('post_likes').insert({
+      // was niet geliked → like op server
+      const { error } = await supabase.from('post_likes').insert({
         post_id: post.id,
         user_id: user.id,
       });
-    }
 
-    fetchPosts();
+      if (error) {
+        // rollback bij error
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === post.id
+              ? {
+                  ...p,
+                  liked_by_me: false,
+                  like_count: p.like_count - 1,
+                }
+              : p
+          )
+        );
+      }
+    }
   };
 
   return (
@@ -128,7 +180,6 @@ const CommunityPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Post formulier */}
       <form onSubmit={handlePost} className="duo-card p-6 md:p-7 bg-white space-y-4">
         <textarea
           placeholder="Deel je progressie of een bemoedigend woord..."
@@ -147,7 +198,6 @@ const CommunityPage: React.FC = () => {
         </div>
       </form>
 
-      {/* Posts */}
       <div className="space-y-4">
         {loading ? (
           <div className="flex flex-col items-center py-20 gap-4">
@@ -177,7 +227,7 @@ const CommunityPage: React.FC = () => {
                       {post.users?.display_name || 'Sporter'}
                     </h4>
                     {post.is_admin_post && (
-                      <span className="text-[10px] font-black bg-[#1CB0F6] text-white px-2 py-0.5 rounded-lg uppercase tracking-widest">
+                      <span className="text-[10px] font-black bg-[#1C8ED9] text-white px-2 py-0.5 rounded-lg uppercase tracking-widest">
                         COACH
                       </span>
                     )}
