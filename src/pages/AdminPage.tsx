@@ -1,5 +1,4 @@
-
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase.ts';
 
@@ -15,40 +14,51 @@ const AdminPage: React.FC = () => {
   const [videoUrl, setVideoUrl] = useState('');
   const [startDate, setStartDate] = useState('');
 
-  const checkAdminStatus = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data: profile } = await supabase.from('users').select('admin').eq('id', user.id).maybeSingle();
-    if (profile?.admin) {
-      setIsAdmin(true);
-      fetchAdminData();
-    } else {
-      setLoading(false);
-    }
-  };
+const fetchAdminData = useCallback(async () => {
+  const { data: chs } = await supabase
+    .from('challenges')
+    .select('*')
+    .order('week', { ascending: false });
 
-  const fetchAdminData = async () => {
-    const { data: chs } = await supabase
-      .from('challenges')
-      .select('*')
-      .order('week', { ascending: false });
-    
-    setChallenges(chs || []);
+  setChallenges(chs || []);
 
-    const { data: checkinStats } = await supabase
-      .from('challenge_checkins')
-      .select('challenge_id');
-    
-    const countMap: Record<number, number> = {};
-    checkinStats?.forEach(c => {
-      countMap[c.challenge_id] = (countMap[c.challenge_id] || 0) + 1;
-    });
-    setStats(countMap);
-    
+  const { data: checkinStats } = await supabase
+    .from('challenge_checkins')
+    .select('challenge_id');
+
+  const countMap: Record<number, number> = {};
+  checkinStats?.forEach((c) => {
+    countMap[c.challenge_id] = (countMap[c.challenge_id] || 0) + 1;
+  });
+  setStats(countMap);
+
+  setLoading(false);
+}, []);
+
+const checkAdminStatus = useCallback(async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
     setLoading(false);
-  };
+    return;
+  }
 
-  useEffect(() => { checkAdminStatus(); }, []);
+  const { data: profile } = await supabase
+    .from('users')
+    .select('admin')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (profile?.admin) {
+    setIsAdmin(true);
+    await fetchAdminData();
+  } else {
+    setLoading(false);
+  }
+}, [fetchAdminData]);
+
+useEffect(() => {
+  checkAdminStatus();
+}, [checkAdminStatus]);
 
   const handleAddChallenge = async (e: React.FormEvent) => {
     e.preventDefault();

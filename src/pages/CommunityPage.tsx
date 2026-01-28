@@ -6,7 +6,6 @@ const CommunityPage: React.FC = () => {
   const [posts, setPosts] = useState<any[]>([]);
   const [newPost, setNewPost] = useState('');
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
   const fetchPosts = async () => {
     setLoading(true);
@@ -17,11 +16,12 @@ const CommunityPage: React.FC = () => {
       .order('created_at', { ascending: false })
       .limit(50);
     
-    if (error) {
-      setError(error.message);
-    } else {
-      setPosts(data || []);
-    }
+  if (error) {
+    alert(error.message);
+    setPosts([]);
+  } else {
+    setPosts(data || []);
+  }
     setLoading(false);
   };
 
