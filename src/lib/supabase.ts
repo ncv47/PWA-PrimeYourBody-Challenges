@@ -1,7 +1,22 @@
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-import { createClient } from '@supabase/supabase-js';
+let client: SupabaseClient | null = null;
 
-const supabaseUrl = "https://yzrqvzrgofmxwrclkfmj.supabase.co";
-const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6cnF2enJnb2ZteHdyY2xrZm1qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwODE5NTksImV4cCI6MjA4NDY1Nzk1OX0.KXX7-bLn6uzJaT2mdY-lakUb2Y6jh5nAi2DNKTz2PGE";
+export function getSupabase(): SupabaseClient {
+  if (client) return client;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const url = process.env.REACT_APP_SUPABASE_URL;
+  const anon = process.env.REACT_APP_SUPABASE_ANON_KEY;
+
+    console.log('SUPABASE_URL loaded?', !!process.env.REACT_APP_SUPABASE_URL);
+    console.log('SUPABASE_ANON loaded?', !!process.env.REACT_APP_SUPABASE_ANON_KEY);
+
+  if (!url || !anon) {
+    throw new Error(
+      'Missing env vars: REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY. Put them in .env at project root and restart npm start.'
+    );
+  }
+
+  client = createClient(url, anon);
+  return client;
+}
