@@ -12,12 +12,11 @@ import {
 import { getSupabase } from './lib/supabase.ts';
 
 import LoginPage from './pages/LoginPage.tsx';
-import HomePage from './pages/HomePage.tsx';
+import HomePage from './pages/HomePage.tsx'; // Landing page
+import ChallengesPage from './pages/ChallengesPage.tsx'; // was HomePage
 import CommunityPage from './pages/CommunityPage.tsx';
 import ProfilePage from './pages/ProfilePage.tsx';
 import AdminPage from './pages/AdminPage.tsx';
-
-console.log(process.env);
 
 const App: React.FC = () => {
   return (
@@ -34,7 +33,11 @@ const AppInner: React.FC = () => {
 
   const checkAdmin = async (userId: string) => {
     const supabase = getSupabase();
-    const { data } = await supabase.from('users').select('admin').eq('id', userId).maybeSingle();
+    const { data } = await supabase
+      .from('users')
+      .select('admin')
+      .eq('id', userId)
+      .maybeSingle();
     setIsAdmin(!!data?.admin);
   };
 
@@ -68,23 +71,34 @@ const AppInner: React.FC = () => {
     );
   }
 
-  return (
-    <div className="min-h-screen flex flex-col md:flex-row">
-      {session && <Sidebar isAdmin={isAdmin} />}
+  // Anonieme users krijgen geen sidebar/padding
+  const showSidebar = !!session;
 
-      <main className={`flex-grow flex justify-center w-full ${session ? 'pb-24 md:pb-10 md:pl-[320px]' : ''}`}>
+  return (
+    <div className={`min-h-screen flex flex-col ${showSidebar ? 'md:flex-row' : ''}`}>
+      {showSidebar && <Sidebar isAdmin={isAdmin} />}
+
+      <main
+        className={`flex-grow flex justify-center w-full ${
+          showSidebar ? 'pb-24 md:pb-10 md:pl-[320px]' : ''
+        }`}
+      >
         <div className="w-full max-w-[1400px] px-4 md:px-10 py-10">
           <Routes>
-            <Route path="/login" element={!session ? <LoginPage /> : <Navigate to="/" />} />
-            <Route path="/" element={session ? <HomePage /> : <Navigate to="/login" />} />
+            {/* Publieke routes */}
+            <Route path="/" element={<HomePage />} />
+            <Route path="/login" element={!session ? <LoginPage /> : <Navigate to="/challenges" />} />
+
+            {/* Alleen voor ingelogde users */}
+            <Route path="/challenges" element={session ? <ChallengesPage /> : <Navigate to="/login" />} />
             <Route path="/community" element={session ? <CommunityPage /> : <Navigate to="/login" />} />
             <Route path="/profile" element={session ? <ProfilePage /> : <Navigate to="/login" />} />
-            <Route path="/admin" element={session && isAdmin ? <AdminPage /> : <Navigate to="/" />} />
+            <Route path="/admin" element={session && isAdmin ? <AdminPage /> : <Navigate to="/challenges" />} />
           </Routes>
         </div>
       </main>
 
-      {session && <BottomNav isAdmin={isAdmin} />}
+      {showSidebar && <BottomNav isAdmin={isAdmin} />}
     </div>
   );
 };
@@ -102,12 +116,13 @@ const Sidebar: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
     <aside className="hidden md:flex flex-col fixed left-0 top-0 bottom-0 w-[320px] border-r-2 border-gray-200 p-8 bg-white z-50">
       <div className="mb-16 px-4">
         <h1 className="text-[#55CDFC] text-3xl font-black tracking-tighter uppercase leading-none">
-          Prime Your<br /><span className="text-gray-800">Body</span>
+          Prime Your<br />
+          <span className="text-gray-800">Body</span>
         </h1>
       </div>
 
       <nav className="flex flex-col gap-4 flex-grow">
-        <SidebarLink to="/" label="Challenges" icon="🎯" />
+        <SidebarLink to="/challenges" label="Challenges" icon="🎯" />
         <SidebarLink to="/community" label="Community" icon="👥" />
         <SidebarLink to="/profile" label="Profiel" icon="👤" />
         {isAdmin && <SidebarLink to="/admin" label="Coach Panel" icon="⚙️" />}
@@ -145,7 +160,7 @@ const SidebarLink: React.FC<{ to: string; label: string; icon: string }> = ({ to
 const BottomNav: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-white border-t-2 border-gray-200 flex items-center justify-around px-2 z-50">
-      <BottomLink to="/" icon="🎯" />
+      <BottomLink to="/challenges" icon="🎯" />
       <BottomLink to="/community" icon="👥" />
       <BottomLink to="/profile" icon="👤" />
       {isAdmin && <BottomLink to="/admin" icon="⚙️" />}
