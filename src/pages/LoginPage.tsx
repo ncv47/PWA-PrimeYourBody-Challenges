@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { supabase } from '../lib/supabase.ts';
+import { getSupabase } from '../lib/supabase.ts';
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -14,7 +13,8 @@ const LoginPage: React.FC = () => {
     setLoading(true);
     setError('');
 
-    const { error } = isRegister 
+    const supabase = getSupabase();
+    const { error } = isRegister
       ? await supabase.auth.signUp({ email, password })
       : await supabase.auth.signInWithPassword({ email, password });
 
@@ -52,14 +52,14 @@ const LoginPage: React.FC = () => {
             required
           />
 
-          {error && <p className="text-red-500 text-xs font-black text-center uppercase tracking-widest">{error}</p>}
+          {error && (
+            <p className="text-red-500 text-xs font-black text-center uppercase tracking-widest">
+              {error}
+            </p>
+          )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-4 duo-btn-primary mt-4"
-          >
-            {loading ? 'Bezig...' : (isRegister ? 'Registreren' : 'Log in')}
+          <button type="submit" disabled={loading} className="w-full py-4 duo-btn-primary mt-4">
+            {loading ? 'Bezig...' : isRegister ? 'Registreren' : 'Log in'}
           </button>
         </form>
 
