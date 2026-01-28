@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 .App {
   text-align: center;
 }
@@ -22,6 +26,7 @@
   justify-content: center;
   font-size: calc(10px + 2vmin);
   color: white;
+  margin-bottom: 1.75rem;
 }
 
 .App-link {
@@ -34,5 +39,55 @@
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* App-wide spacing & a clean modern background */
+:root {
+  --page-max: 1100px;
+}
+
+body {
+  background: #f6f7fb;
+}
+
+/* Wrapper class used on each page */
+.page {
+  padding: 2.5rem 1.5rem 2rem;
+}
+
+.page-inner {
+  max-width: var(--page-max);
+  margin: 0 auto;
+}
+
+/* Consistent cards/boxes spacing */
+.card,
+.box {
+  border-radius: 12px;
+}
+
+/* Tables: keep them readable and not glued to the edge */
+.table-wrap {
+  background: white;
+  border-radius: 12px;
+  padding: 1rem;
+  overflow-x: auto; /* responsive table wrapper approach [web:427] */
+}
+
+.table td,
+.table th {
+  vertical-align: middle;
+}
+
+.table thead th {
+  white-space: nowrap;
+}
+
+/* Right column sticky (optional) */
+@media (min-width: 1024px) {
+  .sticky-side {
+    position: sticky;
+    top: 1rem;
   }
 }
