@@ -18,7 +18,7 @@
       "sizes": "512x512"
     }
   ],
-  "start_url": "/challenges",
+  "start_url": "/login",
   "scope": "/",
   "display": "standalone",
   "theme_color": "#55CDFC",
