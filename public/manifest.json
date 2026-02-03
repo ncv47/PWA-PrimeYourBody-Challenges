@@ -1,6 +1,6 @@
 {
-  "short_name": "React App",
-  "name": "Create React App Sample",
+  "short_name": "Prime Your Body",
+  "name": "Prime Your Body Challenges",
   "icons": [
     {
       "src": "favicon.ico",
@@ -18,9 +18,15 @@
       "sizes": "512x512"
     }
   ],
-  "start_url": "/login",
+  "start_url": "/challenges",
   "scope": "/",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "theme_color": "#55CDFC",
+  "background_color": "#ffffff",
+  "badges": [
+    {
+      "lang": "nl",
+      "src": "favicon.ico"
+    }
+  ]
 }
