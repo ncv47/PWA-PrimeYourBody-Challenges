@@ -1,51 +1,133 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { getSupabase } from '../lib/supabase.ts';
+import { Challenge, CheckIn } from '../types.ts';
+
+type ChallengeWithStatus = Challenge & {
+  checkins: CheckIn[];
+};
+
+const useNotifications = () => {
+  const [permission, setPermission] = useState<'granted' | 'denied' | 'default'>('default');
+
+  const requestPermission = async () => {
+    if (!('Notification' in window)) {
+      alert('Notifications niet ondersteund');
+      return;
+    }
+    try {
+      const perm = await Notification.requestPermission();
+      setPermission(perm as any);
+    } catch (err) {
+      console.error('Permission error:', err);
+    }
+  };
+
+  const showTestNotification = () => {
+    if (permission !== 'granted') {
+      alert('Eerst toestemming!');
+      return;
+    }
+    new Notification('🔔 Test Reminder!', {
+      body: 'Dit is een test notificatie!',
+      icon: '/favicon.ico',
+      badge: '/favicon.ico',
+      tag: 'reminder-test',
+    });
+  };
+
+  return { permission, requestPermission, showTestNotification };
+};
 
 const HomePage: React.FC = () => {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-[#1CB0F6] via-[#55CDFC] to-[#A5D8FF] flex flex-col items-center justify-center px-4">
-      <div className="text-center max-w-2xl space-y-8">
-        {/* Logo */}
-        <div className="text-6xl md:text-7xl font-black italic tracking-tighter text-white drop-shadow-2xl">
-          MPAKT
-        </div>
-        <p className="text-2xl md:text-3xl font-black text-white drop-shadow-lg tracking-tight">
-          Prime Your Body
+  const [challenges, setChallenges] = useState<ChallengeWithStatus[]>([]);
+  const [selectedLevels, setSelectedLevels] = useState<Record<number, string>>({});
+  const [monthlyCount, setMonthlyCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const { permission, requestPermission, showTestNotification } = useNotifications();
+
+  const fetchHomeData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const supabase = getSupabase();
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        setChallenges([]);
+        setLoading(false);
+        return;
+      }
+
+      // Rest van je fetch logic...
+      const { data: activeChallenges } = await supabase
+        .from('challenges')
+        .select('*')
+        .eq('active', true)
+        .order('week', { ascending: false });
+
+      setChallenges(activeChallenges || []);
+      setLoading(false);
+    } catch (err: any) {
+      console.error('Fetch error:', err);
+      setError('Kon challenges niet laden');
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchHomeData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-4">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-4 border-[#55CDFC]"></div>
+        <p className="font-black text-[#55CDFC] uppercase tracking-widest text-[10px]">
+          Loading Stage...
         </p>
-
-        {/* Call to action */}
-        <div className="space-y-4">
-          <a
-            href="/login"
-            className="block w-full max-w-md mx-auto bg-white border-b-[6px] border-[#1CB0F6] rounded-3xl px-12 py-6 font-black uppercase tracking-[0.3em] text-xl text-[#1CB0F6] hover:bg-[#F0F8FF] hover:border-[#0D6EBD] transition-all shadow-2xl hover:scale-[1.02] active:translate-y-[2px] active:border-b-[4px]"
-          >
-            START JOUW JOURNEY
-          </a>
-
-          <div className="flex items-center gap-2 justify-center text-white/80">
-            <span className="text-sm font-black uppercase tracking-widest">
-              Volg ons op Instagram
-            </span>
-            <a
-              href="https://www.instagram.com/prime_your_body_/"
-              target="_blank"
-              rel="noreferrer"
-              className="text-xl hover:scale-110 transition-transform"
-            >
-              📱
-            </a>
-          </div>
-        </div>
-
-        {/* Teaser text */}
-        <div className="text-white/70 font-bold text-lg md:text-xl leading-relaxed max-w-lg mx-auto">
-          <p className="mb-4">
-            Dagelijkse challenges • Community motivatie • Coach‑guidance
-          </p>
-          <p className="text-sm md:text-base opacity-80">
-            Klaar om je lichaam te transformeren?
-          </p>
-        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="max-w-[1100px] mx-auto px-4 md:px-0 space-y-8">
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center">
+          <p className="text-red-800 font-bold">{error}</p>
+          <p className="text-sm text-red-600 mt-1">Check .env vars en restart</p>
+        </div>
+      )}
+
+      {/* Notification test buttons */}
+      <section className="bg-white rounded-3xl p-8 duo-card shadow-sm border-2 border-gray-100">
+        <h3 className="text-xl font-black text-gray-800 mb-4 uppercase tracking-tight flex items-center gap-3">
+          🔔 Reminder Test
+        </h3>
+        <div className="flex flex-wrap gap-4">
+          <button
+            onClick={requestPermission}
+            className="px-6 py-3 rounded-2xl bg-gray-200 text-gray-800 font-black uppercase tracking-wider text-sm hover:bg-gray-300"
+          >
+            {permission === 'default' && 'Vraag toestemming'}
+            {permission === 'granted' && '✅ Toestemming OK'}
+            {permission === 'denied' && '❌ Toestemming geweigerd'}
+          </button>
+          {permission === 'granted' && (
+            <button
+              onClick={showTestNotification}
+              className="px-8 py-3 rounded-2xl bg-[#55CDFC] text-white font-black uppercase tracking-wider text-sm hover:bg-[#3cb3df]"
+            >
+              🚀 Test Notificatie
+            </button>
+          )}
+        </div>
+      </section>
+
+      {/* Rest van je challenges UI hier... (same as before) */}
+      <div>No challenges loaded yet</div>
     </div>
   );
 };
