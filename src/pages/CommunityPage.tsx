@@ -10,6 +10,7 @@ type PostWithMeta = {
   users: {
     display_name: string | null;
     admin: boolean | null;
+    avatar_url: string | null;
   } | null;
   like_count: number;
   liked_by_me: boolean;
@@ -26,9 +27,10 @@ const CommunityPage: React.FC = () => {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
 
+    // ← avatar_url toegevoegd aan de query
     const { data, error } = await supabase
       .from('posts')
-      .select('*, users!inner(display_name, admin)')
+      .select('*, users!inner(display_name, admin, avatar_url)')  // ← avatar_url!
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -81,6 +83,7 @@ const CommunityPage: React.FC = () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // ← avatar_url ook hier toevoegen
     const { data, error: postError } = await supabase
       .from('posts')
       .insert({
@@ -88,11 +91,10 @@ const CommunityPage: React.FC = () => {
         text: newPost,
         is_admin_post: false,
       })
-      .select('*, users(display_name, admin)')
+      .select('*, users(display_name, admin, avatar_url)')  // ← avatar_url!
       .maybeSingle();
 
     if (!postError && data) {
-      // Direct in de lijst pushen zonder volledige refetch
       setPosts((prev) => [
         {
           ...(data as any),
@@ -112,7 +114,6 @@ const CommunityPage: React.FC = () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Optimistisch UI updaten
     setPosts((prev) =>
       prev.map((p) =>
         p.id === post.id
@@ -126,7 +127,6 @@ const CommunityPage: React.FC = () => {
     );
 
     if (post.liked_by_me) {
-      // was geliked → unlike op server
       const { error } = await supabase
         .from('post_likes')
         .delete()
@@ -134,7 +134,6 @@ const CommunityPage: React.FC = () => {
         .eq('user_id', user.id);
 
       if (error) {
-        // rollback bij error
         setPosts((prev) =>
           prev.map((p) =>
             p.id === post.id
@@ -148,14 +147,12 @@ const CommunityPage: React.FC = () => {
         );
       }
     } else {
-      // was niet geliked → like op server
       const { error } = await supabase.from('post_likes').insert({
         post_id: post.id,
         user_id: user.id,
       });
 
       if (error) {
-        // rollback bij error
         setPosts((prev) =>
           prev.map((p) =>
             p.id === post.id
@@ -212,15 +209,27 @@ const CommunityPage: React.FC = () => {
               }`}
             >
               <div className="flex gap-4">
-                <div
-                  className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 text-2xl border-2 ${
-                    post.users?.admin
-                      ? 'bg-yellow-100 border-yellow-400'
-                      : 'bg-gray-100 border-gray-200'
-                  }`}
-                >
-                  {post.users?.admin ? '⚡' : '👤'}
+                {/* ← Profile picture ipv emoji */}
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 border-2 overflow-hidden">
+                  {post.users?.avatar_url ? (
+                    <img
+                      src={post.users.avatar_url}
+                      alt="Profiel"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div
+                      className={`w-full h-full flex items-center justify-center text-2xl ${
+                        post.users?.admin
+                          ? 'bg-yellow-100 border-yellow-400'
+                          : 'bg-gray-100 border-gray-200'
+                      }`}
+                    >
+                      {post.users?.admin ? '⚡' : '👤'}
+                    </div>
+                  )}
                 </div>
+                
                 <div className="flex-grow">
                   <div className="flex items-center gap-2 mb-1">
                     <h4 className="font-black text-[#4B4B4B]">
