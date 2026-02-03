@@ -6,11 +6,76 @@ type ChallengeWithStatus = Challenge & {
   checkins: CheckIn[];
 };
 
-const HomePage: React.FC = () => {
+const useNotifications = () => {
+  const [permission, setPermission] = useState<'granted' | 'denied' | 'default'>('default');
+
+  const requestPermission = async () => {
+    console.log('🔔 Requesting permission...');
+    
+    if (!('Notification' in window)) {
+      alert('Notifications niet ondersteund');
+      return;
+    }
+
+    try {
+      const perm = await Notification.requestPermission();
+      console.log('Permission result:', perm);
+      
+      // ✅ FORCE UPDATE - direct browser state lezen
+      const currentPerm = Notification.permission as 'granted' | 'denied' | 'default';
+      setPermission(currentPerm);
+      
+      return currentPerm;
+    } catch (err) {
+      console.error('Permission error:', err);
+      setPermission('denied');
+    }
+  };
+
+  const showTestNotification = () => {
+    // ✅ DIRECT BROWSER CHECK - geen state afhankelijkheid!
+    const currentPermission = Notification.permission as 'granted' | 'denied' | 'default';
+    console.log('🔔 Current browser permission:', currentPermission);
+    
+    if (currentPermission !== 'granted') {
+      alert(`Toestemming nodig! Status: ${currentPermission}`);
+      requestPermission(); // Auto-request als nog geen permission
+      return;
+    }
+
+    console.log('✅ Creating notification...');
+    
+    try {
+      const notification = new Notification('🔔 Test Reminder!', {
+        body: 'Dit is een test notificatie!',
+        icon: '/favicon.ico',
+        tag: `reminder-${Date.now()}`
+      });
+      
+      console.log('✅ Notification created!');
+      
+      notification.onclick = () => {
+        console.log('Notification clicked!');
+        window.focus();
+      };
+      
+    } catch (error) {
+      console.error('Notification creation failed:', error);
+      alert('Kon notificatie niet maken');
+    }
+  };
+
+  return { permission, requestPermission, showTestNotification };
+};
+
+const ChallengePage: React.FC = () => {
   const [challenges, setChallenges] = useState<ChallengeWithStatus[]>([]);
   const [selectedLevels, setSelectedLevels] = useState<Record<number, string>>({});
   const [monthlyCount, setMonthlyCount] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // Notifications
+  const { permission, requestPermission, showTestNotification } = useNotifications();
 
   const fetchHomeData = async () => {
     setLoading(true);
@@ -106,7 +171,6 @@ const HomePage: React.FC = () => {
 
   const getStatusLabel = (c: ChallengeWithStatus) => {
     if (c.checkins.length === 0) return 'Nog niet geprobeerd';
-    // If you ever track success vs only "done", you can split labels here
     return 'Challenge gelukt';
   };
 
@@ -132,8 +196,37 @@ const HomePage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-[1100px] mx-auto px-4 md:px-0">
-      {/* 2‑koloms layout: links challenges, rechts stats */}
+    <div className="max-w-[1100px] mx-auto px-4 md:px-0 space-y-8">
+      {/* NOTIFICATION TEST BUTTONS - NIEUW */}
+      <section className="bg-white rounded-3xl p-8 duo-card shadow-sm border-2 border-gray-100">
+        <h3 className="text-xl font-black text-gray-800 mb-4 uppercase tracking-tight flex items-center gap-3">
+          🔔 Reminder Test
+        </h3>
+        <div className="flex flex-wrap gap-4">
+          <button
+            onClick={requestPermission}
+            className="px-6 py-3 rounded-2xl bg-gray-200 text-gray-800 font-black uppercase tracking-wider text-sm hover:bg-gray-300 transition-all border border-gray-300"
+          >
+            {permission === 'default' && 'Vraag toestemming'}
+            {permission === 'granted' && '✅ Toestemming OK'}
+            {permission === 'denied' && '❌ Toestemming geweigerd'}
+          </button>
+          
+          {permission === 'granted' && (
+            <button
+              onClick={showTestNotification}
+              className="px-8 py-3 rounded-2xl bg-[#55CDFC] text-white font-black uppercase tracking-wider text-sm hover:bg-[#3cb3df] transition-all shadow-md border-b-4 border-[#1C8ED9] active:border-b-2 active:translate-y-[1px]"
+            >
+              🚀 Test Notificatie
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-gray-500 mt-3 font-bold">
+          Werkt op Android/iOS Chrome/Safari (PWA mode)
+        </p>
+      </section>
+
+      {/* Challenges layout */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-8">
         {/* LINKERKANT – Challenges */}
         <div className="space-y-6">
@@ -147,11 +240,9 @@ const HomePage: React.FC = () => {
                   key={challenge.id}
                   className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-sm overflow-hidden"
                 >
-                  {/* dunne top‑border als scheiding */}
                   <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#55CDFC] via-[#58CC02] to-[#FFC800]" />
 
                   <div className="pt-4 px-5 md:px-6 pb-6 space-y-4">
-                    {/* header: week + status */}
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="flex flex-wrap items-center gap-3">
                         <span className="bg-[#55CDFC] text-white font-black uppercase tracking-[0.2em] text-[9px] px-3 py-1 rounded-full">
@@ -168,7 +259,6 @@ const HomePage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* titel / beschrijving */}
                     <div className="text-center space-y-1">
                       <h2 className="text-xl md:text-2xl font-black text-gray-800 tracking-tight">
                         {challenge.title}
@@ -178,7 +268,6 @@ const HomePage: React.FC = () => {
                       </p>
                     </div>
 
-                    {/* video iets kleiner */}
                     {challenge.video_url && (
                       <a
                         href={challenge.video_url}
@@ -195,7 +284,6 @@ const HomePage: React.FC = () => {
                       </a>
                     )}
 
-                    {/* niveau‑selector */}
                     <div className="space-y-3 pt-3 border-t-2 border-gray-50">
                       <p className="text-center font-black text-gray-400 uppercase text-[10px] tracking-widest">
                         Kies je niveau
@@ -218,7 +306,6 @@ const HomePage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* grote duolingo‑style knop */}
                     <button
                       onClick={() => handleDone(challenge)}
                       disabled={isDone}
@@ -244,9 +331,8 @@ const HomePage: React.FC = () => {
           )}
         </div>
 
-        {/* RECHTERKANT – voortgang + groepsdoel (mock) */}
+        {/* RECHTERKANT – voortgang */}
         <aside className="space-y-6 lg:space-y-8">
-          {/* Maand voortgang kaart */}
           <section className="bg-white rounded-3xl border-2 border-gray-100 p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -271,7 +357,6 @@ const HomePage: React.FC = () => {
             </p>
           </section>
 
-          {/* Mock: punten & groepsdoel */}
           <section className="bg-[#F1FBFF] rounded-3xl border-2 border-[#55CDFC] p-6 shadow-sm space-y-5">
             <div className="flex items-center justify-between">
               <div>
@@ -307,4 +392,4 @@ const HomePage: React.FC = () => {
   );
 };
 
-export default HomePage;
+export default ChallengePage;
