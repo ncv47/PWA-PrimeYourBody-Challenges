@@ -1,13 +1,20 @@
+export interface User {
+  id: string;
+  display_name: string | null;
+  admin: boolean;
+  avatar_url: string | null;
+  created_at: string;
+}
 
 export interface UserProfile {
-  id: string; // UUID
+  id: string;
   display_name: string | null;
   admin: boolean;
   avatar_url?: string;
 }
 
 export interface Challenge {
-  id: number; // int8
+  id: number;
   week: number;
   title: string;
   description: string;
@@ -21,27 +28,29 @@ export interface Challenge {
 }
 
 export interface CheckIn {
-  id: number; // int8
-  user_id: string; // UUID
-  challenge_id: number; // int8
+  id: number;
+  user_id: string;
+  challenge_id: number;
   level: string;
   created_at: string;
 }
 
-export interface Post {
-  id: number; // int8
-  user_id: string; // UUID
-  challenge_id?: number; // int8
-  text: string;
-  image_url: string | null;
+export interface ChallengeComment {
+  id: number;        // Matches your data: "id": 1
+  challenge_id: number;  // Matches your data: "challenge_id": 14  
+  user_id: string;
+  text: string | null;
+  proof_url: string | null;
+  visibility: 'public' | 'coach';
+  parent_id: string | null;  // Added from your data
   created_at: string;
-  is_admin_post?: boolean;
+  updated_at: string;
+  // Array of users from Supabase join - matches your query structure
+  users: User[];
 }
 
-export interface Badge {
-  id: number; // int8
-  user_id: string; // UUID
-  badge_name: string;
-  points: number;
-  earned_at: string;
+// Convenience type for challenges with joined data
+export interface ChallengeWithData extends Challenge {
+  checkins: CheckIn[];
+  my_comments: ChallengeComment[];
 }
