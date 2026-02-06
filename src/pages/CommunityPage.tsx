@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { getSupabase } from '../lib/supabase.ts';
-import { ChallengeComment } from '../types.ts';
 
 type ChallengeCommentWithMeta = {
   id: number;
@@ -10,7 +9,6 @@ type ChallengeCommentWithMeta = {
   proof_url: string | null;
   visibility: 'public' | 'coach';
   created_at: string;
-  updated_at: string;
   parent_id: string | null;
   users: Array<{
     display_name: string | null;
@@ -38,15 +36,8 @@ const CommunityPage: React.FC = () => {
     const { data, error } = await supabase
       .from('challenge_comments')
       .select(`
-        id,
-        challenge_id,
-        user_id,
-        text,
-        proof_url,
-        visibility,
-        created_at,
-        updated_at,
-        parent_id,
+        id, challenge_id, user_id, text, proof_url, visibility, 
+        created_at, parent_id,
         users:users!inner(display_name, admin, avatar_url),
         challenge:challenges!inner(id, week, title)
       `)
@@ -59,15 +50,14 @@ const CommunityPage: React.FC = () => {
       return;
     }
 
-    // Filter by visibility: public OR coach (if admin) + transform arrays
     const visiblePosts = (data || [])
       .filter((post: any) => 
         post.visibility === 'public' || (post.visibility === 'coach' && isAdmin)
       )
       .map((post: any): ChallengeCommentWithMeta => ({
         ...post,
-        users: Array.isArray(post.users) ? post.users : [],
-        challenge: Array.isArray(post.challenge) ? post.challenge : []
+        users: Array.isArray(post.users) ? post.users : [post.users || {}],
+        challenge: Array.isArray(post.challenge) ? post.challenge : [post.challenge || {}]
       }));
 
     setPosts(visiblePosts);
@@ -89,7 +79,6 @@ const CommunityPage: React.FC = () => {
 
   return (
     <div className="max-w-[800px] mx-auto px-4 md:px-0 space-y-16">
-      {/* Header - Extra spacing */}
       <div className="text-center space-y-6 pt-12">
         <h1 className="text-4xl md:text-5xl font-black text-gray-800 tracking-tight">
           Community Challenges
@@ -99,7 +88,6 @@ const CommunityPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Posts - More spacing */}
       <div className="space-y-12">
         {posts.length === 0 ? (
           <div className="p-20 text-center border-dashed border-4 border-gray-100 rounded-3xl opacity-40">
@@ -109,17 +97,13 @@ const CommunityPage: React.FC = () => {
           </div>
         ) : (
           posts.map((post) => {
-            const user = post.users[0] || { display_name: null, admin: false, avatar_url: null };
+            const user = post.users[0] || { display_name: 'Sporter', admin: false, avatar_url: null };
             const challenge = post.challenge[0] || { id: 0, week: 0, title: 'Onbekende Challenge' };
 
             return (
-              <section 
-                key={post.id} 
-                className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-xl overflow-hidden max-w-2xl mx-auto"
-              >
+              <section key={post.id} className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-xl overflow-hidden max-w-2xl mx-auto">
                 <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#55CDFC] via-[#58CC02] to-[#FFC800]" />
                 <div className="pt-8 px-8 pb-8">
-                  {/* Challenge Header */}
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-3">
                       <span className="bg-[#55CDFC] text-white font-black uppercase tracking-[0.2em] text-[11px] px-3 py-1.5 rounded-full">
@@ -138,9 +122,7 @@ const CommunityPage: React.FC = () => {
                     </span>
                   </div>
 
-                  {/* User & Content */}
                   <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-center">
-                    {/* Avatar - Centered */}
                     <div className="flex justify-center lg:justify-start flex-shrink-0 mx-auto lg:mx-0">
                       <div className="w-20 h-20 rounded-3xl border-3 border-gray-200 overflow-hidden shadow-lg">
                         {user.avatar_url ? (
@@ -157,11 +139,10 @@ const CommunityPage: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Content */}
                     <div className="flex-grow space-y-4">
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                         <h4 className="font-black text-xl md:text-2xl text-gray-800">
-                          {user.display_name || 'Anonieme Sporter'}
+                          {user.display_name}
                         </h4>
                         {user.admin && (
                           <span className="text-[11px] font-black bg-[#55CDFC] text-white px-3 py-1 rounded-full uppercase tracking-widest self-start sm:self-auto">
@@ -176,7 +157,6 @@ const CommunityPage: React.FC = () => {
                         </p>
                       )}
 
-                      {/* Centered Proof Image */}
                       {post.proof_url && (
                         <div className="flex justify-center">
                           <div className="w-full max-w-sm md:max-w-md">
