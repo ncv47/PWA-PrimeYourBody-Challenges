@@ -2,9 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { getSupabase } from '../lib/supabase.ts';
 import { Challenge, CheckIn, ChallengeComment } from '../types.ts';
 
+// Interface uitbreiden voor de dynamische opties uit het admin panel
 type ChallengeWithData = Challenge & {
   checkins: CheckIn[];
   my_comments: ChallengeComment[];
+  options?: { label: string; description: string }[];
 };
 
 const ChallengesPage: React.FC = () => {
@@ -58,7 +60,7 @@ const ChallengesPage: React.FC = () => {
       `)
       .eq('user_id', user.id);
 
-    const challengesWithData: ChallengeWithData[] = (activeChallenges || []).map((challenge: Challenge) => ({
+    const challengesWithData: ChallengeWithData[] = (activeChallenges || []).map((challenge: any) => ({
       ...challenge,
       checkins: (userCheckins || []).filter((ci: CheckIn) => ci.challenge_id === challenge.id),
       my_comments: (userComments || [])
@@ -104,7 +106,11 @@ const ChallengesPage: React.FC = () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const level = selectedLevels[challenge.id] || 'Standard';
+    const level = selectedLevels[challenge.id];
+    if (!level) {
+      alert("Kies eerst een niveau!");
+      return;
+    }
 
     const { error } = await supabase.from('challenge_checkins').insert({
       challenge_id: challenge.id,
@@ -284,12 +290,11 @@ const ChallengesPage: React.FC = () => {
     const comment = challenge?.my_comments[0];
     if (!comment) return;
 
-    // ✅ DAADWERKELIJK VERWIJDEREN UIT DATABASE
     const { error } = await supabase
       .from('challenge_comments')
       .delete()
       .eq('id', comment.id)
-      .eq('user_id', comment.user_id); // Extra beveiliging
+      .eq('user_id', comment.user_id);
 
     if (!error) {
       setSuccessMessage(`🗑️ Post verwijderd voor "${challenge?.title}"!`);
@@ -320,7 +325,6 @@ const ChallengesPage: React.FC = () => {
 
   return (
     <div className="max-w-[1100px] mx-auto px-4 md:px-0 space-y-8 pb-12">
-      {/* ✅ SUCCESS/ERROR MESSAGES */}
       {successMessage && (
         <div className="fixed top-4 right-4 z-50 bg-gradient-to-r from-green-500 to-green-600 text-white p-6 rounded-3xl shadow-2xl max-w-sm animate-in slide-in-from-top-4 duration-300 border-2 border-green-400">
           <div className="flex items-center gap-3">
@@ -348,14 +352,25 @@ const ChallengesPage: React.FC = () => {
         <div className="space-y-6">
           {challenges.length > 0 ? challenges.map(challenge => {
             const challengeDone = isDone(challenge);
-            const selectedLevel = selectedLevels[challenge.id] || 'Standard';
+            
+            // Haal de opties op of gebruik de standaard als er niets is opgegeven
+            const levelOptions = (challenge.options && challenge.options.length > 0)
+              ? challenge.options
+              : [
+                  { label: 'Light', description: 'Begin rustig aan met deze variant.' },
+                  { label: 'Standard', description: 'De volledige challenge zoals bedoeld.' },
+                  { label: 'Pro', description: 'Voor als je een extra uitdaging wilt!' }
+                ];
+            
+            const currentSelectedLevel = selectedLevels[challenge.id];
+            const currentOptionObj = levelOptions.find(o => o.label === currentSelectedLevel);
+            
             const comment = challenge.my_comments[0];
             const user = comment?.users?.[0] || { display_name: 'Jij', admin: false, avatar_url: null };
             const isEditing = editing[challenge.id];
 
             return (
               <section key={challenge.id} className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-xl overflow-hidden">
-                {/* ✅ FIXED COLORED BAR - ROUNDED CORNERS */}
                 <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#55CDFC] via-[#58CC02] to-[#FFC800] rounded-t-3xl" />
                 
                 <div className="pt-6 px-5 md:px-6 pb-6 space-y-4">
@@ -387,24 +402,38 @@ const ChallengesPage: React.FC = () => {
 
                   {!challengeDone ? (
                     <>
-                      <div className="space-y-3 pt-3 border-t-2 border-gray-50">
+                      <div className="space-y-4 pt-3 border-t-2 border-gray-50">
                         <p className="text-center font-black text-gray-400 uppercase text-[10px]">Kies niveau</p>
-                        <div className="grid grid-cols-3 gap-2">
-                          {['Light', 'Standard', 'Pro'].map(lvl => (
+                        
+                        <div className={`grid gap-2 ${levelOptions.length === 1 ? 'grid-cols-1' : levelOptions.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                          {levelOptions.map((opt) => (
                             <button
-                              key={lvl}
-                              onClick={() => handleLevelSelect(challenge.id, lvl)}
-                              className={`py-3 rounded-2xl font-black uppercase text-[9px] border-2 transition-all ${
-                                selectedLevel === lvl
+                              key={opt.label}
+                              onClick={() => handleLevelSelect(challenge.id, opt.label)}
+                              className={`py-3 px-2 rounded-2xl font-black uppercase text-[9px] border-2 transition-all ${
+                                currentSelectedLevel === opt.label
                                   ? 'bg-[#E1F5FE] border-[#55CDFC] text-[#55CDFC] shadow-[0_3px_0_#55CDFC]'
                                   : 'bg-white border-gray-200 text-gray-400 border-b-4 active:translate-y-1 active:border-b-2'
                               }`}
                             >
-                              {lvl}
+                              {opt.label}
                             </button>
                           ))}
                         </div>
+
+                        {/* Dynamische beschrijving van het geselecteerde niveau */}
+                        {currentOptionObj && (
+                          <div className="px-5 py-4 bg-[#F1FBFF] rounded-2xl border-2 border-dashed border-[#55CDFC]/30 animate-in fade-in slide-in-from-top-2">
+                            <p className="text-[10px] font-black text-[#55CDFC] uppercase tracking-widest mb-1 text-center">
+                              Jouw opdracht:
+                            </p>
+                            <p className="text-sm text-gray-600 font-bold text-center leading-relaxed">
+                              {currentOptionObj.description}
+                            </p>
+                          </div>
+                        )}
                       </div>
+
                       <button
                         onClick={() => handleDone(challenge)}
                         className="w-full py-4 rounded-3xl font-black uppercase tracking-[0.2em] text-sm bg-[#55CDFC] border-b-[5px] border-[#1C8ED9] text-white hover:bg-[#1C8ED9] transition-all active:border-b-2 active:translate-y-1"
