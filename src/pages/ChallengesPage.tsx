@@ -1,114 +1,27 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { getSupabase } from '../lib/supabase.ts';
-import { Challenge, CheckIn } from '../types.ts';
+import { Challenge, CheckIn, ChallengeComment } from '../types.ts';
 
-type ChallengeWithStatus = Challenge & {
+type ChallengeWithData = Challenge & {
   checkins: CheckIn[];
+  my_comments: ChallengeComment[];
 };
 
-// ✅ PERMANENTE notificatie hook (browser onthoudt zelf)
-const useNotifications = () => {
-  const [permission, setPermission] = useState<'granted' | 'denied' | 'default'>('default');
-  const notifiedChallenges = useRef<Set<number>>(new Set());
-
-  // Check browser permission bij elke load (blijft permanent!)
-  useEffect(() => {
-    const currentPerm = Notification.permission as 'granted' | 'denied' | 'default';
-    setPermission(currentPerm);
-  }, []);
-
-  const requestPermission = async () => {
-    if (!('Notification' in window)) return;
-    
-    try {
-      await Notification.requestPermission();
-      // Browser slaat PERMANENT op - werkt ook als app/tab gesloten
-      const newPerm = Notification.permission as 'granted' | 'denied' | 'default';
-      setPermission(newPerm);
-      console.log('✅ Permission permanent opgeslagen:', newPerm);
-    } catch (err) {
-      setPermission('denied');
-    }
-  };
-
-  const sendNotification = (title: string, body: string, tag: string) => {
-    if (Notification.permission !== 'granted') return false;
-    
-    try {
-      const notification = new Notification(title, {
-        body,
-        icon: '/favicon.ico',
-        badge: '/favicon.ico',
-        tag
-      });
-      
-      notification.onclick = () => {
-        window.focus();
-        window.location.href = '/challenges';
-      };
-      
-      console.log('🔔 Notification verstuurd:', title);
-      return true;
-    } catch (error) {
-      console.error('Notification error:', error);
-      return false;
-    }
-  };
-
-  const sendNewChallengeNotification = (challenge: ChallengeWithStatus) => {
-    const tag = `new-challenge-${challenge.id}`;
-    if (notifiedChallenges.current.has(challenge.id!)) return false;
-    
-    const sent = sendNotification(
-      `🎉 Nieuwe Challenge! Week ${challenge.week}`,
-      `${challenge.title}\nStart direct met deze challenge!`,
-      tag
-    );
-    
-    if (sent) notifiedChallenges.current.add(challenge.id!);
-    return sent;
-  };
-
-  return { permission, requestPermission, sendNewChallengeNotification };
-};
-
-const ChallengePage: React.FC = () => {
-  const [challenges, setChallenges] = useState<ChallengeWithStatus[]>([]);
+const ChallengesPage: React.FC = () => {
+  const [challenges, setChallenges] = useState<ChallengeWithData[]>([]);
   const [selectedLevels, setSelectedLevels] = useState<Record<number, string>>({});
   const [monthlyCount, setMonthlyCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  
-  // ✅ FIX: Maak notifiedChallenges beschikbaar
-  const previouslyActive = useRef<Set<number>>(new Set());
-  const challengeVersion = useRef(0);
-  const notifiedChallenges = useRef<Set<number>>(new Set()); // ← DIT TOEVOEGEN
-  
-  const { permission, requestPermission, sendNewChallengeNotification } = useNotifications();
+  const [uploading, setUploading] = useState<Record<number, boolean>>({});
+  const [commentTexts, setCommentTexts] = useState<Record<number, string>>({});
+  const [proofFiles, setProofFiles] = useState<Record<number, File | null>>({});
+  const [visibilities, setVisibilities] = useState<Record<number, 'public' | 'coach'>>({});
+  const [confirming, setConfirming] = useState<Record<number, boolean>>({});
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Record<number, boolean>>({});
+  const [deleting, setDeleting] = useState<Record<number, boolean>>({});
 
-  // ✅ FIX: Nieuwe challenges met version reset
-  useEffect(() => {
-    if (permission !== 'granted') return;
-    
-    // Force refresh detectie voor nieuwe tests
-    challengeVersion.current += 1;
-    
-    challenges.forEach(challenge => {
-      const id = challenge.id!;
-      // Was niet eerder actief EN nu actief = NIEUWE CHALLENGE!
-      if (challenge.active && !previouslyActive.current.has(id)) {
-        console.log('🎉 NIEUWE ACTIEVE CHALLENGE DETECTED:', challenge.title);
-        sendNewChallengeNotification(challenge);
-        previouslyActive.current.add(id);
-      }
-    });
-
-    // Update lijst actieve challenges
-    challenges.forEach(challenge => {
-      if (challenge.active) previouslyActive.current.add(challenge.id!);
-    });
-  }, [challenges, permission, sendNewChallengeNotification]);
-
-  const fetchHomeData = async () => {
+  const fetchData = async () => {
     setLoading(true);
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
@@ -120,43 +33,65 @@ const ChallengePage: React.FC = () => {
 
     const { data: activeChallenges } = await supabase
       .from('challenges')
-      .select(`
-        *,
-        challenge_checkins (
-          id, user_id, level, created_at
-        )
-      `)
+      .select('*')
       .eq('active', true)
       .order('week', { ascending: false });
 
-    const merged = (activeChallenges || []).map((c: any) => ({
-      ...c,
-      checkins: c.challenge_checkins?.filter((ci: any) => ci.user_id === user.id) || [],
+    const { data: userCheckins } = await supabase
+      .from('challenge_checkins')
+      .select('*')
+      .eq('user_id', user.id);
+
+    const { data: userComments } = await supabase
+      .from('challenge_comments')
+      .select(`
+        id,
+        challenge_id,
+        user_id,
+        text,
+        proof_url,
+        visibility,
+        created_at,
+        updated_at,
+        parent_id,
+        users:users!inner(display_name, admin, avatar_url)
+      `)
+      .eq('user_id', user.id);
+
+    const challengesWithData: ChallengeWithData[] = (activeChallenges || []).map((challenge: Challenge) => ({
+      ...challenge,
+      checkins: (userCheckins || []).filter((ci: CheckIn) => ci.challenge_id === challenge.id),
+      my_comments: (userComments || [])
+        .map((c: any) => ({
+          ...c,
+          parent_id: c.parent_id || null,
+          users: Array.isArray(c.users) ? c.users : []
+        }))
+        .filter((c: ChallengeComment) => c.challenge_id === challenge.id)
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     }));
 
-    setChallenges(merged);
+    setChallenges(challengesWithData);
 
-    // Monthly count
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
-
     const { data: monthRows } = await supabase
       .from('challenge_checkins')
-      .select('challenge_id')
+      .select('id')
       .eq('user_id', user.id)
       .gte('created_at', startOfMonth.toISOString());
-
-    setMonthlyCount((monthRows || []).length);
+    
+    setMonthlyCount(monthRows?.length || 0);
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchHomeData();
+    fetchData();
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(fetchHomeData, 5 * 60 * 1000); // 5 min
+    const interval = setInterval(fetchData, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -164,134 +99,274 @@ const ChallengePage: React.FC = () => {
     setSelectedLevels(prev => ({ ...prev, [challengeId]: level }));
   };
 
-  const handleDone = async (challenge: ChallengeWithStatus) => {
+  const handleDone = async (challenge: ChallengeWithData) => {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const level = selectedLevels[challenge.id!] || 'Standard';
+    const level = selectedLevels[challenge.id] || 'Standard';
 
     const { error } = await supabase.from('challenge_checkins').insert({
-      challenge_id: challenge.id!,
+      challenge_id: challenge.id,
       user_id: user.id,
       level,
     });
 
     if (!error) {
-      await fetchHomeData();
+      setSuccessMessage(`✅ Challenge "${challenge.title}" voltooid!`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+      await fetchData();
     } else {
-      alert('Je hebt deze challenge al afgevinkt!');
+      alert('Je hebt deze challenge al voltooid!');
     }
   };
 
-  // 🔄 ADMIN TEST RESET (tijdelijk)
-  const resetForTesting = () => {
-    challengeVersion.current = 0;
-    previouslyActive.current.clear();
-    notifiedChallenges.current.clear(); // ✅ NU WERKT DIT
-    fetchHomeData();
-    console.log('🔄 TEST RESET voltooid - alle trackers gecleared');
+  const handleCommentSubmit = async (challengeId: number) => {
+    if (!confirming[challengeId]) {
+      setConfirming(prev => ({ ...prev, [challengeId]: true }));
+      setTimeout(() => {
+        setConfirming(prev => ({ ...prev, [challengeId]: false }));
+      }, 3000);
+      return;
+    }
+
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const challenge = challenges.find(c => c.id === challengeId);
+    if (!challenge || challenge.my_comments.length > 0) return;
+
+    const text = commentTexts[challengeId]?.trim();
+    const proofFile = proofFiles[challengeId];
+
+    if (!text && !proofFile) {
+      alert('Voeg tekst of foto toe!');
+      setConfirming(prev => ({ ...prev, [challengeId]: false }));
+      return;
+    }
+
+    setUploading(prev => ({ ...prev, [challengeId]: true }));
+
+    let proofUrl = null;
+
+    if (proofFile) {
+      const ext = proofFile.name.split('.').pop();
+      const fileName = `${user.id}/${challengeId}-${Date.now()}.${ext}`;
+
+      const { error } = await supabase.storage
+        .from('challenge_proof')
+        .upload(fileName, proofFile, { upsert: false });
+
+      if (error) {
+        alert(error.message);
+        setUploading(prev => ({ ...prev, [challengeId]: false }));
+        setConfirming(prev => ({ ...prev, [challengeId]: false }));
+        return;
+      }
+
+      proofUrl = supabase.storage
+        .from('challenge_proof')
+        .getPublicUrl(fileName).data.publicUrl;
+    }
+
+    const { error: insertError } = await supabase.from('challenge_comments').insert({
+      challenge_id: challengeId,
+      user_id: user.id,
+      text: text || null,
+      proof_url: proofUrl,
+      visibility: visibilities[challengeId] || 'public'
+    });
+
+    setUploading(prev => ({ ...prev, [challengeId]: false }));
+    setConfirming(prev => ({ ...prev, [challengeId]: false }));
+    setCommentTexts(prev => ({ ...prev, [challengeId]: '' }));
+    setProofFiles(prev => ({ ...prev, [challengeId]: null }));
+    setVisibilities(prev => ({ ...prev, [challengeId]: 'public' }));
+
+    if (!insertError) {
+      setSuccessMessage(`💬 Post geplaatst voor "${challenge?.title}"!`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+      await fetchData();
+    }
   };
 
-  const getStatusLabel = (c: ChallengeWithStatus) => 
-    c.checkins.length === 0 ? 'Nog niet geprobeerd' : 'Challenge gelukt';
+  const handleEditStart = (challengeId: number) => {
+    const challenge = challenges.find(c => c.id === challengeId);
+    const comment = challenge?.my_comments[0];
+    
+    if (comment) {
+      setCommentTexts(prev => ({ ...prev, [challengeId]: comment.text || '' }));
+      setVisibilities(prev => ({ ...prev, [challengeId]: comment.visibility as 'public' | 'coach' }));
+      setEditing(prev => ({ ...prev, [challengeId]: true }));
+    }
+  };
 
-  const getStatusStyle = (c: ChallengeWithStatus) => 
-    c.checkins.length === 0 ? 'bg-gray-100 text-gray-500 border-gray-200' : 'bg-[#E1F5FE] text-[#55CDFC] border-[#55CDFC]';
+  const handleEditCancel = (challengeId: number) => {
+    setEditing(prev => ({ ...prev, [challengeId]: false }));
+    setCommentTexts(prev => ({ ...prev, [challengeId]: '' }));
+    setProofFiles(prev => ({ ...prev, [challengeId]: null }));
+  };
+
+  const handleEditSubmit = async (challengeId: number) => {
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const challenge = challenges.find(c => c.id === challengeId);
+    const comment = challenge?.my_comments[0];
+    if (!comment) return;
+
+    const text = commentTexts[challengeId]?.trim();
+    const proofFile = proofFiles[challengeId];
+
+    if (!text && !proofFile && !comment.proof_url) {
+      alert('Voeg tekst of foto toe!');
+      return;
+    }
+
+    setUploading(prev => ({ ...prev, [challengeId]: true }));
+
+    let proofUrl = comment.proof_url;
+
+    if (proofFile) {
+      const ext = proofFile.name.split('.').pop();
+      const fileName = `${user.id}/${challengeId}-${Date.now()}.${ext}`;
+
+      const { error } = await supabase.storage
+        .from('challenge_proof')
+        .upload(fileName, proofFile, { upsert: false });
+
+      if (error) {
+        alert(error.message);
+        setUploading(prev => ({ ...prev, [challengeId]: false }));
+        return;
+      }
+
+      proofUrl = supabase.storage
+        .from('challenge_proof')
+        .getPublicUrl(fileName).data.publicUrl;
+    }
+
+    const { error: updateError } = await supabase
+      .from('challenge_comments')
+      .update({
+        text: text || null,
+        proof_url: proofUrl,
+        visibility: visibilities[challengeId] || 'public',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', comment.id);
+
+    setUploading(prev => ({ ...prev, [challengeId]: false }));
+    setEditing(prev => ({ ...prev, [challengeId]: false }));
+    setCommentTexts(prev => ({ ...prev, [challengeId]: '' }));
+    setProofFiles(prev => ({ ...prev, [challengeId]: null }));
+
+    if (!updateError) {
+      setSuccessMessage(`💾 Post bijgewerkt voor "${challenge?.title}"!`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+      await fetchData();
+    }
+  };
+
+  const handleDelete = async (challengeId: number) => {
+    if (!deleting[challengeId]) {
+      setDeleting(prev => ({ ...prev, [challengeId]: true }));
+      setTimeout(() => {
+        setDeleting(prev => ({ ...prev, [challengeId]: false }));
+      }, 3000);
+      return;
+    }
+
+    const supabase = getSupabase();
+    const challenge = challenges.find(c => c.id === challengeId);
+    const comment = challenge?.my_comments[0];
+    if (!comment) return;
+
+    // ✅ DAADWERKELIJK VERWIJDEREN UIT DATABASE
+    const { error } = await supabase
+      .from('challenge_comments')
+      .delete()
+      .eq('id', comment.id)
+      .eq('user_id', comment.user_id); // Extra beveiliging
+
+    if (!error) {
+      setSuccessMessage(`🗑️ Post verwijderd voor "${challenge?.title}"!`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+      setDeleting(prev => ({ ...prev, [challengeId]: false }));
+      await fetchData();
+    } else {
+      alert('Fout bij verwijderen: ' + error.message);
+      setDeleting(prev => ({ ...prev, [challengeId]: false }));
+    }
+  };
+
+  const handleProofSelect = (challengeId: number, file: File | null) => {
+    setProofFiles(prev => ({ ...prev, [challengeId]: file }));
+  };
+
+  const isDone = (challenge: ChallengeWithData) => challenge.checkins.length > 0;
+  const hasPosted = (challenge: ChallengeWithData) => challenge.my_comments.length > 0;
 
   if (loading) {
-    return <div className="flex flex-col items-center justify-center py-20 gap-4">
-      <div className="animate-spin rounded-full h-10 w-10 border-b-4 border-[#55CDFC]"></div>
-      <p className="font-black text-[#55CDFC] uppercase tracking-widest text-[10px]">Loading...</p>
-    </div>;
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-4">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-4 border-[#55CDFC]"></div>
+        <p className="font-black text-[#55CDFC] uppercase tracking-widest text-[10px]">Loading...</p>
+      </div>
+    );
   }
 
   return (
-    <div className="max-w-[1100px] mx-auto px-4 md:px-0 space-y-8">
-      {/* 🔔 PERMANENTE NOTIFICATIE BOX + TEST */}
-      <section className="bg-gradient-to-r from-[#E1F5FE] to-[#B3E5FC] rounded-3xl p-6 border-2 border-[#55CDFC]/50 shadow-lg">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3 flex-1">
-            <div className="p-3 bg-white/80 rounded-2xl shadow-sm border">
-              <span className="text-2xl">🔔</span>
-            </div>
-            <div>
-              <h3 className="font-black text-xl text-gray-800 leading-tight">Push Reminders</h3>
-              <p className="text-sm text-gray-600 font-bold">
-                {permission === 'granted' ? (
-                  '✅ Actief (werkt ook als app gesloten)'
-                ) : permission === 'denied' ? (
-                  '❌ Uitgeschakeld'
-                ) : (
-                  '📱 Klik Toestaan (blijft permanent)'
-                )}
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
-            {permission !== 'granted' && (
-              <button
-                onClick={requestPermission}
-                className="px-8 py-3 rounded-2xl bg-[#55CDFC] text-white font-black uppercase tracking-wider text-sm shadow-lg border-b-4 border-[#1C8ED9] hover:bg-[#3cb3df] transition-all"
-              >
-                Toestaan
-              </button>
-            )}
-            
-            {permission === 'granted' && (
-              <>
-                <div className="bg-white/80 px-6 py-3 rounded-2xl border-2 border-green-200 text-sm font-black text-green-700 flex items-center gap-2 shadow-md">
-                  <span>🔔</span>
-                  <span>PERMANENT ACTIEF</span>
-                </div>
-                {/* 🔄 ADMIN TEST BUTTON */}
-                <button
-                  onClick={resetForTesting}
-                  className="px-4 py-2 bg-yellow-400 text-black text-xs font-black uppercase rounded-xl hover:bg-yellow-500 transition-all shadow-md"
-                >
-                  🔄 Test Reset
-                </button>
-              </>
-            )}
+    <div className="max-w-[1100px] mx-auto px-4 md:px-0 space-y-8 pb-12">
+      {/* ✅ SUCCESS/ERROR MESSAGES */}
+      {successMessage && (
+        <div className="fixed top-4 right-4 z-50 bg-gradient-to-r from-green-500 to-green-600 text-white p-6 rounded-3xl shadow-2xl max-w-sm animate-in slide-in-from-top-4 duration-300 border-2 border-green-400">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">
+              {successMessage.includes('🗑️') ? '🗑️' : successMessage.includes('💾') ? '💾' : successMessage.includes('💬') ? '💬' : '✅'}
+            </span>
+            <p className="font-bold text-lg">{successMessage}</p>
           </div>
         </div>
+      )}
 
-        <div className="mt-4 pt-4 border-t border-white/50">
-          <p className="text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-2">📅 Automatisch:</p>
-          <div className="grid grid-cols-2 gap-3 text-xs text-gray-600 font-semibold">
-            <div className="flex items-center gap-2 p-2 bg-white/50 rounded-xl">
-              <span>🎉</span>
-              <span>Nieuwe challenges</span>
-            </div>
-            <div className="flex items-center gap-2 p-2 bg-white/50 rounded-xl">
-              <span>⏰</span>
-              <span>12u voor deadline</span>
+      <section className="bg-gradient-to-r from-[#E1F5FE] to-[#B3E5FC] rounded-3xl p-6 border-2 border-[#55CDFC]/50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">🔔</span>
+            <div>
+              <h3 className="font-black text-lg text-gray-800">Push Reminders</h3>
+              <p className="text-sm text-gray-600 font-bold">✅ Actief</p>
             </div>
           </div>
-          <p className="text-[10px] text-gray-600 mt-2 font-bold italic">
-            💡 Werkt op iOS/Android als PWA geïnstalleerd
-          </p>
         </div>
       </section>
 
-      {/* Challenges grid */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-8">
         <div className="space-y-6">
           {challenges.length > 0 ? challenges.map(challenge => {
-            const isDone = challenge.checkins.length > 0;
-            const selectedLevel = selectedLevels[challenge.id!] || 'Standard';
-            
+            const challengeDone = isDone(challenge);
+            const selectedLevel = selectedLevels[challenge.id] || 'Standard';
+            const comment = challenge.my_comments[0];
+            const user = comment?.users?.[0] || { display_name: 'Jij', admin: false, avatar_url: null };
+            const isEditing = editing[challenge.id];
+
             return (
-              <section key={challenge.id} className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-sm overflow-hidden">
-                <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#55CDFC] via-[#58CC02] to-[#FFC800]" />
-                <div className="pt-4 px-5 md:px-6 pb-6 space-y-4">
+              <section key={challenge.id} className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-xl overflow-hidden">
+                {/* ✅ FIXED COLORED BAR - ROUNDED CORNERS */}
+                <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#55CDFC] via-[#58CC02] to-[#FFC800] rounded-t-3xl" />
+                
+                <div className="pt-6 px-5 md:px-6 pb-6 space-y-4">
                   <div className="flex flex-wrap items-center gap-3">
                     <span className="bg-[#55CDFC] text-white font-black uppercase tracking-[0.2em] text-[9px] px-3 py-1 rounded-full">
                       Week {challenge.week}
                     </span>
-                    <span className={[getStatusStyle(challenge), 'text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full border'].join(' ')}>
-                      {getStatusLabel(challenge)}
+                    <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${
+                      challengeDone ? 'bg-[#E1F5FE] text-[#55CDFC] border-[#55CDFC]' : 'bg-gray-100 text-gray-500 border-gray-200'
+                    }`}>
+                      {challengeDone ? '✓ Voltooid' : 'Nog niet geprobeerd'}
                     </span>
                   </div>
 
@@ -302,88 +377,226 @@ const ChallengePage: React.FC = () => {
                     </p>
                   </div>
 
-                  {challenge.deadline_date && (
-                    <div className="text-center">
-                      <span className="bg-[#FFF7ED] px-4 py-2 rounded-2xl border-2 border-orange-200 text-orange-700 font-black text-sm">
-                        ⏰ Deadline: {new Date(challenge.deadline_date).toLocaleDateString('nl-NL')}
-                      </span>
-                    </div>
-                  )}
-
                   {challenge.video_url && (
-                    <a href={challenge.video_url} target="_blank" rel="noreferrer" className="block rounded-2xl bg-gray-50 aspect-[16/10] relative flex items-center justify-center hover:scale-[1.01] transition-transform group overflow-hidden mx-auto max-w-[92%]">
-                      <div className="w-12 h-12 md:w-14 md:h-14 bg-white rounded-full flex items-center justify-center shadow-lg border-2 border-gray-100 group-hover:scale-110 transition-transform">
-                        <span className="text-[#55CDFC] text-xl md:text-2xl ml-1">▶</span>
-                      </div>
-                      <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm text-white px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest">
-                        Video Instructie
+                    <a href={challenge.video_url} target="_blank" rel="noreferrer" className="block rounded-2xl bg-gray-50 aspect-[16/10] relative flex items-center justify-center mx-auto max-w-[92%]">
+                      <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
+                        <span className="text-[#55CDFC] text-xl ml-1">▶</span>
                       </div>
                     </a>
                   )}
 
-                  <div className="space-y-3 pt-3 border-t-2 border-gray-50">
-                    <p className="text-center font-black text-gray-400 uppercase text-[10px] tracking-widest">Kies je niveau</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {['Light', 'Standard', 'Pro'].map(lvl => (
-                        <button
-                          key={lvl}
-                          disabled={isDone}
-                          onClick={() => handleLevelSelect(challenge.id!, lvl)}
-                          className={`py-3 rounded-2xl font-black uppercase text-[9px] border-2 transition-all ${
-                            selectedLevel === lvl
-                              ? 'bg-[#E1F5FE] border-[#55CDFC] text-[#55CDFC] shadow-[0_3px_0_#55CDFC]'
-                              : 'bg-white border-gray-200 text-gray-400 border-b-4 active:translate-y-1 active:border-b-2'
-                          } ${isDone ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        >
-                          {lvl}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  {!challengeDone ? (
+                    <>
+                      <div className="space-y-3 pt-3 border-t-2 border-gray-50">
+                        <p className="text-center font-black text-gray-400 uppercase text-[10px]">Kies niveau</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          {['Light', 'Standard', 'Pro'].map(lvl => (
+                            <button
+                              key={lvl}
+                              onClick={() => handleLevelSelect(challenge.id, lvl)}
+                              className={`py-3 rounded-2xl font-black uppercase text-[9px] border-2 transition-all ${
+                                selectedLevel === lvl
+                                  ? 'bg-[#E1F5FE] border-[#55CDFC] text-[#55CDFC] shadow-[0_3px_0_#55CDFC]'
+                                  : 'bg-white border-gray-200 text-gray-400 border-b-4 active:translate-y-1 active:border-b-2'
+                              }`}
+                            >
+                              {lvl}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDone(challenge)}
+                        className="w-full py-4 rounded-3xl font-black uppercase tracking-[0.2em] text-sm bg-[#55CDFC] border-b-[5px] border-[#1C8ED9] text-white hover:bg-[#1C8ED9] transition-all active:border-b-2 active:translate-y-1"
+                      >
+                        MARKEER ALS DONE
+                      </button>
+                    </>
+                  ) : (
+                    <div className="pt-4 border-t-2 border-gray-50 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[#58CC02] text-xl">💬</span>
+                        <h4 className="font-black text-lg text-gray-800">Deel ervaring</h4>
+                      </div>
+                      
+                      {!hasPosted(challenge) || isEditing ? (
+                        <div className="space-y-3">
+                          <textarea
+                            placeholder="Hoe ging het? Tips voor anderen?"
+                            className="w-full bg-[#F8FAFC] border-2 border-gray-200 rounded-2xl p-4 focus:border-[#55CDFC] focus:outline-none font-bold min-h-[80px] resize-none"
+                            rows={3}
+                            value={commentTexts[challenge.id] || ''}
+                            onChange={(e) => setCommentTexts(prev => ({ ...prev, [challenge.id]: e.target.value }))}
+                          />
+                          <div className="flex flex-col sm:flex-row gap-3 items-end">
+                            <input
+                              type="file"
+                              accept="image/*,video/*"
+                              onChange={(e) => handleProofSelect(challenge.id, e.target.files?.[0] || null)}
+                              className="flex-1 px-4 py-3 border-2 border-dashed border-gray-300 rounded-2xl bg-gray-50 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-xl file:bg-[#55CDFC] file:text-white file:font-bold file:border-0 hover:border-[#55CDFC] transition-colors cursor-pointer"
+                            />
+                            <div className="flex gap-2 flex-wrap">
+                              <label className="flex items-center gap-1 px-4 py-2 bg-green-50 border-2 border-green-200 rounded-xl text-xs font-black cursor-pointer hover:bg-green-100 transition-colors">
+                                <input 
+                                  type="radio" 
+                                  name={`vis-${challenge.id}`} 
+                                  value="public" 
+                                  checked={visibilities[challenge.id] !== 'coach'}
+                                  onChange={() => setVisibilities(prev => ({ ...prev, [challenge.id]: 'public' }))}
+                                  className="w-4 h-4 text-[#58CC02]" 
+                                />
+                                🌐 Publiek
+                              </label>
+                              <label className="flex items-center gap-1 px-4 py-2 bg-yellow-50 border-2 border-yellow-200 rounded-xl text-xs font-black cursor-pointer hover:bg-yellow-100 transition-colors">
+                                <input 
+                                  type="radio" 
+                                  name={`vis-${challenge.id}`} 
+                                  value="coach" 
+                                  checked={visibilities[challenge.id] === 'coach'}
+                                  onChange={() => setVisibilities(prev => ({ ...prev, [challenge.id]: 'coach' }))}
+                                  className="w-4 h-4 text-yellow-500" 
+                                />
+                                👨‍🏫 Coach
+                              </label>
+                            </div>
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            {isEditing && (
+                              <button
+                                onClick={() => handleEditCancel(challenge.id)}
+                                className="flex-1 py-3 rounded-2xl font-black uppercase tracking-wider text-sm bg-gray-200 border-b-[4px] border-gray-400 text-gray-700 hover:bg-gray-300 transition-all active:border-b-2 active:translate-y-1"
+                              >
+                                ❌ ANNULEER
+                              </button>
+                            )}
+                            <button
+                              onClick={() => isEditing ? handleEditSubmit(challenge.id) : handleCommentSubmit(challenge.id)}
+                              disabled={uploading[challenge.id]}
+                              className={`${isEditing ? 'flex-1' : 'w-full'} py-4 rounded-3xl font-black uppercase tracking-[0.2em] text-sm border-b-[5px] transition-all ${
+                                confirming[challenge.id] && !isEditing
+                                  ? 'bg-gradient-to-r from-orange-500 to-orange-600 border-orange-700 text-white shadow-lg shadow-orange-500/50 animate-pulse font-extrabold'
+                                  : uploading[challenge.id]
+                                  ? 'bg-gray-400 border-gray-500 text-white cursor-not-allowed'
+                                  : isEditing
+                                  ? 'bg-blue-500 border-blue-700 text-white hover:bg-blue-600 shadow-lg active:border-b-2 active:translate-y-1'
+                                  : 'bg-[#58CC02] border-[#46A302] text-white hover:bg-[#46A302] shadow-lg active:border-b-2 active:translate-y-1'
+                              }`}
+                            >
+                              {uploading[challenge.id]
+                                ? '📤 Uploaden...'
+                                : isEditing
+                                ? '💾 OPSLAAN'
+                                : confirming[challenge.id]
+                                ? '🔥 BEVESTIG (2x KLIK!)'
+                                : '💬 POST'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
 
-                  <button
-                    onClick={() => handleDone(challenge)}
-                    disabled={isDone}
-                    className={[
-                      'w-full mt-3 py-4 rounded-3xl font-black uppercase tracking-[0.2em] text-sm border-b-[5px] transition-all',
-                      isDone
-                        ? 'bg-[#58CC02] border-[#46A302] text-white cursor-default'
-                        : 'bg-[#55CDFC] border-[#1C8ED9] text-white hover:bg-[#1C8ED9] active:translate-y-[2px] active:border-b-[3px]',
-                    ].join(' ')}
-                  >
-                    {isDone ? '✓ CHALLENGE GELUKT' : 'MARKEER CHALLENGE ALS DONE'}
-                  </button>
+                      {challenge.my_comments?.length > 0 && !isEditing && (
+                        <div className="pt-4 border-t border-gray-100 space-y-3">
+                          <p className="font-black text-gray-500 text-[11px] uppercase mb-3 tracking-widest">
+                            Jouw reactie
+                          </p>
+                          <div className="p-5 bg-gradient-to-r from-gray-50 to-blue-50 rounded-2xl border border-gray-200">
+                            <div className="flex items-start gap-3 mb-3">
+                              <div className="w-10 h-10 rounded-xl flex-shrink-0 border-2 border-gray-200 overflow-hidden">
+                                {user.avatar_url ? (
+                                  <img 
+                                    src={user.avatar_url} 
+                                    alt="Jouw avatar"
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-lg font-bold text-gray-500">
+                                    👤
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex-grow min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="font-bold text-gray-800 text-sm truncate">{user.display_name || 'Jij'}</p>
+                                  <span className={`text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest ${
+                                    comment?.visibility === 'coach' 
+                                      ? 'bg-yellow-100 text-yellow-800' 
+                                      : 'bg-green-100 text-green-800'
+                                  }`}>
+                                    {comment?.visibility === 'coach' ? 'Coach only' : 'Publiek'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            {comment?.text && (
+                              <p className="font-semibold text-gray-700 mb-3 text-sm leading-relaxed">
+                                "{comment.text}"
+                              </p>
+                            )}
+                            {comment?.proof_url && (
+                              <div className="w-full max-w-md mb-3">
+                                <img 
+                                  src={comment.proof_url} 
+                                  alt="Jouw bewijs" 
+                                  className="w-full h-auto object-cover rounded-xl shadow-sm"
+                                />
+                              </div>
+                            )}
+                            <p className="text-[10px] text-gray-500 mb-4 font-medium">
+                              {new Date(comment?.created_at).toLocaleDateString('nl-NL')}
+                            </p>
+
+                            <div className="flex gap-2 pt-3 border-t border-gray-200">
+                              <button
+                                onClick={() => handleEditStart(challenge.id)}
+                                className="flex-1 py-2.5 rounded-xl font-black uppercase tracking-wider text-xs bg-blue-50 border-2 border-blue-200 text-blue-700 hover:bg-blue-100 transition-all"
+                              >
+                                ✏️ BEWERK
+                              </button>
+                              <button
+                                onClick={() => handleDelete(challenge.id)}
+                                className={`flex-1 py-2.5 rounded-xl font-black uppercase tracking-wider text-xs border-2 transition-all ${
+                                  deleting[challenge.id]
+                                    ? 'bg-red-500 border-red-700 text-white animate-pulse shadow-lg'
+                                    : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
+                                }`}
+                              >
+                                {deleting[challenge.id] ? '⚠️ BEVESTIG!' : '🗑️ VERWIJDER'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </section>
             );
           }) : (
-            <div className="p-16 text-center border-dashed border-4 border-gray-100 grayscale opacity-40 rounded-3xl">
+            <div className="p-16 text-center border-dashed border-4 border-gray-100 rounded-3xl opacity-40">
               <span className="text-6xl mb-6 block">⚡</span>
-              <h2 className="text-3xl font-black text-gray-800 tracking-tight">Batterij Opladen</h2>
-              <p className="text-gray-400 font-bold mt-2">Geen actieve uitdaging voor deze week.</p>
+              <h2 className="text-3xl font-black text-gray-800">Geen challenges</h2>
             </div>
           )}
         </div>
 
-        {/* Sidebar stats */}
         <aside className="space-y-6 lg:space-y-8">
           <section className="bg-white rounded-3xl border-2 border-gray-100 p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Maand voortgang</p>
-                <p className="mt-1 text-xl font-black text-gray-800">{monthlyCount} / 4 Challenges</p>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Maand</p>
+                <p className="mt-1 text-xl font-black text-gray-800">{monthlyCount}/4</p>
               </div>
               <span className="text-2xl">📅</span>
             </div>
-            <div className="h-3 w-full bg-[#F3F4F6] rounded-full overflow-hidden border border-gray-200">
-              <div className="h-full bg-[#55CDFC]" style={{ width: `${Math.min(100, (monthlyCount / 4) * 100)}%` }}></div>
+            <div className="h-3 w-full bg-[#F3F4F6] rounded-full overflow-hidden">
+              <div className="h-full bg-[#55CDFC] transition-all duration-500" style={{ width: `${Math.min((monthlyCount / 4) * 100, 100)}%` }} />
             </div>
           </section>
-          
-          <section className="bg-[#F1FBFF] rounded-3xl border-2 border-[#55CDFC] p-6 shadow-sm">
+          <section className="bg-[#F1FBFF] rounded-3xl border-2 border-[#55CDFC] p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-[10px] font-black text-[#55CDFC] uppercase tracking-widest">Mijn punten</p>
+                <p className="text-[10px] font-black text-[#55CDFC] uppercase tracking-widest">Punten</p>
                 <p className="mt-1 text-2xl font-black text-gray-800">420 XP</p>
               </div>
               <span className="text-3xl">💪</span>
@@ -395,4 +608,4 @@ const ChallengePage: React.FC = () => {
   );
 };
 
-export default ChallengePage;
+export default ChallengesPage;
