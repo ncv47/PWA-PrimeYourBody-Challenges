@@ -17,73 +17,74 @@ const ChallengesPage: React.FC = () => {
   const [proofFiles, setProofFiles] = useState<Record<number, File | null>>({});
   const [visibilities, setVisibilities] = useState<Record<number, 'public' | 'coach'>>({});
   const [confirming, setConfirming] = useState<Record<number, boolean>>({});
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Record<number, boolean>>({});
+  const [deleting, setDeleting] = useState<Record<number, boolean>>({});
 
-const fetchData = async () => {
-  setLoading(true);
-  const supabase = getSupabase();
-  const { data: { user } } = await supabase.auth.getUser();
-  
-  if (!user) {
+  const fetchData = async () => {
+    setLoading(true);
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    const { data: activeChallenges } = await supabase
+      .from('challenges')
+      .select('*')
+      .eq('active', true)
+      .order('week', { ascending: false });
+
+    const { data: userCheckins } = await supabase
+      .from('challenge_checkins')
+      .select('*')
+      .eq('user_id', user.id);
+
+    const { data: userComments } = await supabase
+      .from('challenge_comments')
+      .select(`
+        id,
+        challenge_id,
+        user_id,
+        text,
+        proof_url,
+        visibility,
+        created_at,
+        updated_at,
+        parent_id,
+        users:users!inner(display_name, admin, avatar_url)
+      `)
+      .eq('user_id', user.id);
+
+    const challengesWithData: ChallengeWithData[] = (activeChallenges || []).map((challenge: Challenge) => ({
+      ...challenge,
+      checkins: (userCheckins || []).filter((ci: CheckIn) => ci.challenge_id === challenge.id),
+      my_comments: (userComments || [])
+        .map((c: any) => ({
+          ...c,
+          parent_id: c.parent_id || null,
+          users: Array.isArray(c.users) ? c.users : []
+        }))
+        .filter((c: ChallengeComment) => c.challenge_id === challenge.id)
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    }));
+
+    setChallenges(challengesWithData);
+
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const { data: monthRows } = await supabase
+      .from('challenge_checkins')
+      .select('id')
+      .eq('user_id', user.id)
+      .gte('created_at', startOfMonth.toISOString());
+    
+    setMonthlyCount(monthRows?.length || 0);
     setLoading(false);
-    return;
-  }
-
-  const { data: activeChallenges } = await supabase
-    .from('challenges')
-    .select('*')
-    .eq('active', true)
-    .order('week', { ascending: false });
-
-  const { data: userCheckins } = await supabase
-    .from('challenge_checkins')
-    .select('*')
-    .eq('user_id', user.id);
-
-  const { data: userComments } = await supabase
-    .from('challenge_comments')
-    .select(`
-      id,
-      challenge_id,
-      user_id,
-      text,
-      proof_url,
-      visibility,
-      created_at,
-      updated_at,
-      parent_id,
-      users:users!inner(display_name, admin, avatar_url)
-    `)
-    .eq('user_id', user.id);
-
-  const challengesWithData: ChallengeWithData[] = (activeChallenges || []).map((challenge: Challenge) => ({
-    ...challenge,
-    checkins: (userCheckins || []).filter((ci: CheckIn) => ci.challenge_id === challenge.id),
-    my_comments: (userComments || [])
-      .map((c: any) => ({
-        ...c,
-        parent_id: c.parent_id || null,
-        users: Array.isArray(c.users) ? c.users : []
-      }))
-      .filter((c: ChallengeComment) => c.challenge_id === challenge.id)
-      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-  }));
-
-  setChallenges(challengesWithData);
-
-  // Monthly count
-  const startOfMonth = new Date();
-  startOfMonth.setDate(1);
-  startOfMonth.setHours(0, 0, 0, 0);
-  const { data: monthRows } = await supabase
-    .from('challenge_checkins')
-    .select('id')
-    .eq('user_id', user.id)
-    .gte('created_at', startOfMonth.toISOString());
-  
-  setMonthlyCount(monthRows?.length || 0);
-  setLoading(false);
-};
-
+  };
 
   useEffect(() => {
     fetchData();
@@ -112,6 +113,8 @@ const fetchData = async () => {
     });
 
     if (!error) {
+      setSuccessMessage(`✅ Challenge "${challenge.title}" voltooid!`);
+      setTimeout(() => setSuccessMessage(null), 4000);
       await fetchData();
     } else {
       alert('Je hebt deze challenge al voltooid!');
@@ -121,6 +124,9 @@ const fetchData = async () => {
   const handleCommentSubmit = async (challengeId: number) => {
     if (!confirming[challengeId]) {
       setConfirming(prev => ({ ...prev, [challengeId]: true }));
+      setTimeout(() => {
+        setConfirming(prev => ({ ...prev, [challengeId]: false }));
+      }, 3000);
       return;
     }
 
@@ -164,7 +170,7 @@ const fetchData = async () => {
         .getPublicUrl(fileName).data.publicUrl;
     }
 
-    await supabase.from('challenge_comments').insert({
+    const { error: insertError } = await supabase.from('challenge_comments').insert({
       challenge_id: challengeId,
       user_id: user.id,
       text: text || null,
@@ -178,7 +184,122 @@ const fetchData = async () => {
     setProofFiles(prev => ({ ...prev, [challengeId]: null }));
     setVisibilities(prev => ({ ...prev, [challengeId]: 'public' }));
 
-    await fetchData();
+    if (!insertError) {
+      setSuccessMessage(`💬 Post geplaatst voor "${challenge?.title}"!`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+      await fetchData();
+    }
+  };
+
+  const handleEditStart = (challengeId: number) => {
+    const challenge = challenges.find(c => c.id === challengeId);
+    const comment = challenge?.my_comments[0];
+    
+    if (comment) {
+      setCommentTexts(prev => ({ ...prev, [challengeId]: comment.text || '' }));
+      setVisibilities(prev => ({ ...prev, [challengeId]: comment.visibility as 'public' | 'coach' }));
+      setEditing(prev => ({ ...prev, [challengeId]: true }));
+    }
+  };
+
+  const handleEditCancel = (challengeId: number) => {
+    setEditing(prev => ({ ...prev, [challengeId]: false }));
+    setCommentTexts(prev => ({ ...prev, [challengeId]: '' }));
+    setProofFiles(prev => ({ ...prev, [challengeId]: null }));
+  };
+
+  const handleEditSubmit = async (challengeId: number) => {
+    const supabase = getSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const challenge = challenges.find(c => c.id === challengeId);
+    const comment = challenge?.my_comments[0];
+    if (!comment) return;
+
+    const text = commentTexts[challengeId]?.trim();
+    const proofFile = proofFiles[challengeId];
+
+    if (!text && !proofFile && !comment.proof_url) {
+      alert('Voeg tekst of foto toe!');
+      return;
+    }
+
+    setUploading(prev => ({ ...prev, [challengeId]: true }));
+
+    let proofUrl = comment.proof_url;
+
+    if (proofFile) {
+      const ext = proofFile.name.split('.').pop();
+      const fileName = `${user.id}/${challengeId}-${Date.now()}.${ext}`;
+
+      const { error } = await supabase.storage
+        .from('challenge_proof')
+        .upload(fileName, proofFile, { upsert: false });
+
+      if (error) {
+        alert(error.message);
+        setUploading(prev => ({ ...prev, [challengeId]: false }));
+        return;
+      }
+
+      proofUrl = supabase.storage
+        .from('challenge_proof')
+        .getPublicUrl(fileName).data.publicUrl;
+    }
+
+    const { error: updateError } = await supabase
+      .from('challenge_comments')
+      .update({
+        text: text || null,
+        proof_url: proofUrl,
+        visibility: visibilities[challengeId] || 'public',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', comment.id);
+
+    setUploading(prev => ({ ...prev, [challengeId]: false }));
+    setEditing(prev => ({ ...prev, [challengeId]: false }));
+    setCommentTexts(prev => ({ ...prev, [challengeId]: '' }));
+    setProofFiles(prev => ({ ...prev, [challengeId]: null }));
+
+    if (!updateError) {
+      setSuccessMessage(`💾 Post bijgewerkt voor "${challenge?.title}"!`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+      await fetchData();
+    }
+  };
+
+  const handleDelete = async (challengeId: number) => {
+    if (!deleting[challengeId]) {
+      setDeleting(prev => ({ ...prev, [challengeId]: true }));
+      setTimeout(() => {
+        setDeleting(prev => ({ ...prev, [challengeId]: false }));
+      }, 3000);
+      return;
+    }
+
+    const supabase = getSupabase();
+    const challenge = challenges.find(c => c.id === challengeId);
+    const comment = challenge?.my_comments[0];
+    if (!comment) return;
+
+    // ✅ DAADWERKELIJK VERWIJDEREN UIT DATABASE
+    const { error } = await supabase
+      .from('challenge_comments')
+      .delete()
+      .eq('id', comment.id)
+      .eq('user_id', comment.user_id); // Extra beveiliging
+
+    if (!error) {
+      setSuccessMessage(`🗑️ Post verwijderd voor "${challenge?.title}"!`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+      setDeleting(prev => ({ ...prev, [challengeId]: false }));
+      await fetchData();
+    } else {
+      alert('Fout bij verwijderen: ' + error.message);
+      setDeleting(prev => ({ ...prev, [challengeId]: false }));
+    }
   };
 
   const handleProofSelect = (challengeId: number, file: File | null) => {
@@ -186,9 +307,7 @@ const fetchData = async () => {
   };
 
   const isDone = (challenge: ChallengeWithData) => challenge.checkins.length > 0;
-
-  const hasPosted = (challenge: ChallengeWithData) =>
-    challenge.my_comments.length > 0;
+  const hasPosted = (challenge: ChallengeWithData) => challenge.my_comments.length > 0;
 
   if (loading) {
     return (
@@ -200,7 +319,19 @@ const fetchData = async () => {
   }
 
   return (
-    <div className="max-w-[1100px] mx-auto px-4 md:px-0 space-y-8">
+    <div className="max-w-[1100px] mx-auto px-4 md:px-0 space-y-8 pb-12">
+      {/* ✅ SUCCESS/ERROR MESSAGES */}
+      {successMessage && (
+        <div className="fixed top-4 right-4 z-50 bg-gradient-to-r from-green-500 to-green-600 text-white p-6 rounded-3xl shadow-2xl max-w-sm animate-in slide-in-from-top-4 duration-300 border-2 border-green-400">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">
+              {successMessage.includes('🗑️') ? '🗑️' : successMessage.includes('💾') ? '💾' : successMessage.includes('💬') ? '💬' : '✅'}
+            </span>
+            <p className="font-bold text-lg">{successMessage}</p>
+          </div>
+        </div>
+      )}
+
       <section className="bg-gradient-to-r from-[#E1F5FE] to-[#B3E5FC] rounded-3xl p-6 border-2 border-[#55CDFC]/50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -218,11 +349,16 @@ const fetchData = async () => {
           {challenges.length > 0 ? challenges.map(challenge => {
             const challengeDone = isDone(challenge);
             const selectedLevel = selectedLevels[challenge.id] || 'Standard';
+            const comment = challenge.my_comments[0];
+            const user = comment?.users?.[0] || { display_name: 'Jij', admin: false, avatar_url: null };
+            const isEditing = editing[challenge.id];
 
             return (
-              <section key={challenge.id} className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-sm overflow-hidden">
-                <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#55CDFC] via-[#58CC02] to-[#FFC800]" />
-                <div className="pt-4 px-5 md:px-6 pb-6 space-y-4">
+              <section key={challenge.id} className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-xl overflow-hidden">
+                {/* ✅ FIXED COLORED BAR - ROUNDED CORNERS */}
+                <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#55CDFC] via-[#58CC02] to-[#FFC800] rounded-t-3xl" />
+                
+                <div className="pt-6 px-5 md:px-6 pb-6 space-y-4">
                   <div className="flex flex-wrap items-center gap-3">
                     <span className="bg-[#55CDFC] text-white font-black uppercase tracking-[0.2em] text-[9px] px-3 py-1 rounded-full">
                       Week {challenge.week}
@@ -271,7 +407,7 @@ const fetchData = async () => {
                       </div>
                       <button
                         onClick={() => handleDone(challenge)}
-                        className="w-full py-4 rounded-3xl font-black uppercase tracking-[0.2em] text-sm bg-[#55CDFC] border-b-[5px] border-[#1C8ED9] text-white hover:bg-[#1C8ED9]"
+                        className="w-full py-4 rounded-3xl font-black uppercase tracking-[0.2em] text-sm bg-[#55CDFC] border-b-[5px] border-[#1C8ED9] text-white hover:bg-[#1C8ED9] transition-all active:border-b-2 active:translate-y-1"
                       >
                         MARKEER ALS DONE
                       </button>
@@ -282,91 +418,152 @@ const fetchData = async () => {
                         <span className="text-[#58CC02] text-xl">💬</span>
                         <h4 className="font-black text-lg text-gray-800">Deel ervaring</h4>
                       </div>
-                      {!hasPosted(challenge) && (
-                      <div className="space-y-3">
-                        <textarea
-                          placeholder="Hoe ging het? Tips voor anderen?"
-                          className="w-full bg-[#F8FAFC] border-2 border-gray-200 rounded-2xl p-4 focus:border-[#55CDFC] font-bold"
-                          rows={3}
-                          value={commentTexts[challenge.id] || ''}
-                          onChange={(e) => setCommentTexts(prev => ({ ...prev, [challenge.id]: e.target.value }))}
-                        />
-                        <div className="flex flex-col sm:flex-row gap-3 items-end">
-                          <input
-                            type="file"
-                            accept="image/*,video/*"
-                            onChange={(e) => handleProofSelect(challenge.id, e.target.files?.[0] || null)}
-                            className="flex-1 px-4 py-3 border-2 border-dashed border-gray-300 rounded-2xl bg-gray-50 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:bg-[#55CDFC] file:text-white"
+                      
+                      {!hasPosted(challenge) || isEditing ? (
+                        <div className="space-y-3">
+                          <textarea
+                            placeholder="Hoe ging het? Tips voor anderen?"
+                            className="w-full bg-[#F8FAFC] border-2 border-gray-200 rounded-2xl p-4 focus:border-[#55CDFC] focus:outline-none font-bold min-h-[80px] resize-none"
+                            rows={3}
+                            value={commentTexts[challenge.id] || ''}
+                            onChange={(e) => setCommentTexts(prev => ({ ...prev, [challenge.id]: e.target.value }))}
                           />
+                          <div className="flex flex-col sm:flex-row gap-3 items-end">
+                            <input
+                              type="file"
+                              accept="image/*,video/*"
+                              onChange={(e) => handleProofSelect(challenge.id, e.target.files?.[0] || null)}
+                              className="flex-1 px-4 py-3 border-2 border-dashed border-gray-300 rounded-2xl bg-gray-50 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-xl file:bg-[#55CDFC] file:text-white file:font-bold file:border-0 hover:border-[#55CDFC] transition-colors cursor-pointer"
+                            />
+                            <div className="flex gap-2 flex-wrap">
+                              <label className="flex items-center gap-1 px-4 py-2 bg-green-50 border-2 border-green-200 rounded-xl text-xs font-black cursor-pointer hover:bg-green-100 transition-colors">
+                                <input 
+                                  type="radio" 
+                                  name={`vis-${challenge.id}`} 
+                                  value="public" 
+                                  checked={visibilities[challenge.id] !== 'coach'}
+                                  onChange={() => setVisibilities(prev => ({ ...prev, [challenge.id]: 'public' }))}
+                                  className="w-4 h-4 text-[#58CC02]" 
+                                />
+                                🌐 Publiek
+                              </label>
+                              <label className="flex items-center gap-1 px-4 py-2 bg-yellow-50 border-2 border-yellow-200 rounded-xl text-xs font-black cursor-pointer hover:bg-yellow-100 transition-colors">
+                                <input 
+                                  type="radio" 
+                                  name={`vis-${challenge.id}`} 
+                                  value="coach" 
+                                  checked={visibilities[challenge.id] === 'coach'}
+                                  onChange={() => setVisibilities(prev => ({ ...prev, [challenge.id]: 'coach' }))}
+                                  className="w-4 h-4 text-yellow-500" 
+                                />
+                                👨‍🏫 Coach
+                              </label>
+                            </div>
+                          </div>
+                          
                           <div className="flex gap-2">
-                            <label className="flex items-center gap-1 px-4 py-2 bg-green-50 border rounded-xl text-xs font-black cursor-pointer">
-                              <input type="radio" name={`vis-${challenge.id}`} value="public" 
-                                checked={visibilities[challenge.id] !== 'coach'}
-                                onChange={() => setVisibilities(prev => ({ ...prev, [challenge.id]: 'public' }))}
-                                className="w-4 h-4 text-[#55CDFC]" />
-                              🌐 Publiek
-                            </label>
-                            <label className="flex items-center gap-1 px-4 py-2 bg-yellow-50 border rounded-xl text-xs font-black cursor-pointer">
-                              <input type="radio" name={`vis-${challenge.id}`} value="coach" 
-                                checked={visibilities[challenge.id] === 'coach'}
-                                onChange={() => setVisibilities(prev => ({ ...prev, [challenge.id]: 'coach' }))}
-                                className="w-4 h-4 text-[#55CDFC]" />
-                              👨‍🏫 Coach
-                            </label>
+                            {isEditing && (
+                              <button
+                                onClick={() => handleEditCancel(challenge.id)}
+                                className="flex-1 py-3 rounded-2xl font-black uppercase tracking-wider text-sm bg-gray-200 border-b-[4px] border-gray-400 text-gray-700 hover:bg-gray-300 transition-all active:border-b-2 active:translate-y-1"
+                              >
+                                ❌ ANNULEER
+                              </button>
+                            )}
+                            <button
+                              onClick={() => isEditing ? handleEditSubmit(challenge.id) : handleCommentSubmit(challenge.id)}
+                              disabled={uploading[challenge.id]}
+                              className={`${isEditing ? 'flex-1' : 'w-full'} py-4 rounded-3xl font-black uppercase tracking-[0.2em] text-sm border-b-[5px] transition-all ${
+                                confirming[challenge.id] && !isEditing
+                                  ? 'bg-gradient-to-r from-orange-500 to-orange-600 border-orange-700 text-white shadow-lg shadow-orange-500/50 animate-pulse font-extrabold'
+                                  : uploading[challenge.id]
+                                  ? 'bg-gray-400 border-gray-500 text-white cursor-not-allowed'
+                                  : isEditing
+                                  ? 'bg-blue-500 border-blue-700 text-white hover:bg-blue-600 shadow-lg active:border-b-2 active:translate-y-1'
+                                  : 'bg-[#58CC02] border-[#46A302] text-white hover:bg-[#46A302] shadow-lg active:border-b-2 active:translate-y-1'
+                              }`}
+                            >
+                              {uploading[challenge.id]
+                                ? '📤 Uploaden...'
+                                : isEditing
+                                ? '💾 OPSLAAN'
+                                : confirming[challenge.id]
+                                ? '🔥 BEVESTIG (2x KLIK!)'
+                                : '💬 POST'}
+                            </button>
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleCommentSubmit(challenge.id)}
-                          disabled={uploading[challenge.id] || hasPosted(challenge)}
-                          className={`w-full py-3 rounded-2xl font-black uppercase text-sm border-b-4 transition-all ${
-                            uploading[challenge.id] || hasPosted(challenge)
-                              ? 'bg-gray-400 border-gray-300 text-white cursor-not-allowed'
-                              : 'bg-[#58CC02] border-[#46A302] text-white hover:bg-[#46A302]'
-                          }`}
-                        >
-                          {hasPosted(challenge)
-                            ? '✓ GEPLAATST'
-                            : confirming[challenge.id]
-                              ? '✔ BEVESTIG POST'
-                              : uploading[challenge.id]
-                                ? '📤 Uploaden...'
-                                : '💬 POST'}
-                        </button>
-                      </div>
-                      )}
+                      ) : null}
 
-                      {challenge.my_comments?.length > 0 && (
-                        <div className="pt-4 border-t border-gray-100">
-                          <p className="font-black text-gray-500 text-[11px] uppercase mb-3">
-                            Jouw reacties ({challenge.my_comments.length})
+                      {challenge.my_comments?.length > 0 && !isEditing && (
+                        <div className="pt-4 border-t border-gray-100 space-y-3">
+                          <p className="font-black text-gray-500 text-[11px] uppercase mb-3 tracking-widest">
+                            Jouw reactie
                           </p>
-                          <div className="space-y-3 max-h-48 overflow-y-auto">
-                            {challenge.my_comments.map((comment: ChallengeComment) => (
-                              <div key={comment.id} className="p-4 bg-gray-50 rounded-xl text-sm">
-                                <div className="flex items-center gap-3 mb-2">
-                                  <div className="w-8 h-8 rounded-xl bg-gray-200 flex items-center justify-center">
-                                    {comment.users?.[0]?.avatar_url ? (
-                                        <img src={comment.users[0].avatar_url} className="w-7 h-7 rounded-lg object-cover" alt="Avatar" />
-                                      ) : (
-                                        <span className="font-bold text-gray-500">👤</span>
-                                      )}
-                                      <p className="font-bold text-gray-800 text-xs">{comment.users?.[0]?.display_name || 'Jij'}</p>
-                                    <span className={`text-[9px] px-2 py-0.5 rounded-full ${
-                                      comment.visibility === 'coach' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'
-                                    }`}>
-                                      {comment.visibility === 'coach' ? 'Coach only' : 'Publiek'}
-                                    </span>
+                          <div className="p-5 bg-gradient-to-r from-gray-50 to-blue-50 rounded-2xl border border-gray-200">
+                            <div className="flex items-start gap-3 mb-3">
+                              <div className="w-10 h-10 rounded-xl flex-shrink-0 border-2 border-gray-200 overflow-hidden">
+                                {user.avatar_url ? (
+                                  <img 
+                                    src={user.avatar_url} 
+                                    alt="Jouw avatar"
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-lg font-bold text-gray-500">
+                                    👤
                                   </div>
-                                </div>
-                                {comment.text && <p className="font-semibold text-gray-700 mb-2">{comment.text}</p>}
-                                {comment.proof_url && (
-                                  <img src={comment.proof_url} alt="Proof" className="w-full max-w-xs h-24 object-cover rounded-lg" />
                                 )}
-                                <p className="text-[10px] text-gray-500 mt-1">
-                                  {new Date(comment.created_at).toLocaleDateString('nl-NL')}
-                                </p>
                               </div>
-                            ))}
+                              <div className="flex-grow min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="font-bold text-gray-800 text-sm truncate">{user.display_name || 'Jij'}</p>
+                                  <span className={`text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest ${
+                                    comment?.visibility === 'coach' 
+                                      ? 'bg-yellow-100 text-yellow-800' 
+                                      : 'bg-green-100 text-green-800'
+                                  }`}>
+                                    {comment?.visibility === 'coach' ? 'Coach only' : 'Publiek'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            {comment?.text && (
+                              <p className="font-semibold text-gray-700 mb-3 text-sm leading-relaxed">
+                                "{comment.text}"
+                              </p>
+                            )}
+                            {comment?.proof_url && (
+                              <div className="w-full max-w-md mb-3">
+                                <img 
+                                  src={comment.proof_url} 
+                                  alt="Jouw bewijs" 
+                                  className="w-full h-auto object-cover rounded-xl shadow-sm"
+                                />
+                              </div>
+                            )}
+                            <p className="text-[10px] text-gray-500 mb-4 font-medium">
+                              {new Date(comment?.created_at).toLocaleDateString('nl-NL')}
+                            </p>
+
+                            <div className="flex gap-2 pt-3 border-t border-gray-200">
+                              <button
+                                onClick={() => handleEditStart(challenge.id)}
+                                className="flex-1 py-2.5 rounded-xl font-black uppercase tracking-wider text-xs bg-blue-50 border-2 border-blue-200 text-blue-700 hover:bg-blue-100 transition-all"
+                              >
+                                ✏️ BEWERK
+                              </button>
+                              <button
+                                onClick={() => handleDelete(challenge.id)}
+                                className={`flex-1 py-2.5 rounded-xl font-black uppercase tracking-wider text-xs border-2 transition-all ${
+                                  deleting[challenge.id]
+                                    ? 'bg-red-500 border-red-700 text-white animate-pulse shadow-lg'
+                                    : 'bg-red-50 border-red-200 text-red-700 hover:bg-red-100'
+                                }`}
+                              >
+                                {deleting[challenge.id] ? '⚠️ BEVESTIG!' : '🗑️ VERWIJDER'}
+                              </button>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -377,7 +574,7 @@ const fetchData = async () => {
             );
           }) : (
             <div className="p-16 text-center border-dashed border-4 border-gray-100 rounded-3xl opacity-40">
-              <span className="text-6xl mb-6">⚡</span>
+              <span className="text-6xl mb-6 block">⚡</span>
               <h2 className="text-3xl font-black text-gray-800">Geen challenges</h2>
             </div>
           )}
@@ -393,7 +590,7 @@ const fetchData = async () => {
               <span className="text-2xl">📅</span>
             </div>
             <div className="h-3 w-full bg-[#F3F4F6] rounded-full overflow-hidden">
-              <div className="h-full bg-[#55CDFC]" style={{ width: `${(monthlyCount / 4) * 100}%` }} />
+              <div className="h-full bg-[#55CDFC] transition-all duration-500" style={{ width: `${Math.min((monthlyCount / 4) * 100, 100)}%` }} />
             </div>
           </section>
           <section className="bg-[#F1FBFF] rounded-3xl border-2 border-[#55CDFC] p-6">
