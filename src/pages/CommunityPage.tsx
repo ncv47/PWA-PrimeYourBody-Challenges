@@ -5,6 +5,7 @@ type PostWithMeta = {
   id: number;
   text: string;
   created_at: string;
+  visibility: 'public' | 'coach';
   is_admin_post: boolean;
   user_id: string;
   users: {
@@ -29,8 +30,15 @@ const CommunityPage: React.FC = () => {
 
     // ← avatar_url toegevoegd aan de query
     const { data, error } = await supabase
-      .from('posts')
-      .select('*, users!inner(display_name, admin, avatar_url)')  // ← avatar_url!
+      .from('challenge_comments')
+      .select(`
+        id,
+        text,
+        created_at,
+        visibility,
+        user_id,
+        users(display_name, admin, avatar_url)
+      `)
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -42,6 +50,10 @@ const CommunityPage: React.FC = () => {
     }
 
     const postsRaw = (data || []) as any[];
+
+    const visiblePosts = postsRaw.filter(
+     (p) => p.visibility === 'public' || user?.user_metadata?.admin
+    );
 
     const postIds = postsRaw.map((p) => p.id);
     let likesByPost: Record<number, number> = {};
@@ -61,7 +73,7 @@ const CommunityPage: React.FC = () => {
       });
     }
 
-    const withMeta: PostWithMeta[] = postsRaw.map((p) => ({
+    const withMeta: PostWithMeta[] = visiblePosts.map((p) => ({
       ...p,
       like_count: likesByPost[p.id] || 0,
       liked_by_me: likedByMe[p.id] || false,
@@ -231,15 +243,26 @@ const CommunityPage: React.FC = () => {
                 </div>
                 
                 <div className="flex-grow">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <h4 className="font-black text-[#4B4B4B]">
                       {post.users?.display_name || 'Sporter'}
                     </h4>
+
                     {post.is_admin_post && (
                       <span className="text-[10px] font-black bg-[#1C8ED9] text-white px-2 py-0.5 rounded-lg uppercase tracking-widest">
                         COACH
                       </span>
                     )}
+
+                    <span
+                      className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest ${
+                        post.visibility === 'coach'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-green-100 text-green-800'
+                      }`}
+                    >
+                      {post.visibility === 'coach' ? 'Coach only' : 'Publiek'}
+                    </span>
                   </div>
                   <p className="text-[#777777] font-bold leading-relaxed">{post.text}</p>
                   <div className="mt-4 flex items-center justify-between border-t-2 border-gray-50 pt-3">
