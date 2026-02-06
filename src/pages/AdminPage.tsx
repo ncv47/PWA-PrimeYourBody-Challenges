@@ -13,6 +13,11 @@ interface UserSummary {
   latest_challenge: string | null;
 }
 
+interface ChallengeOption {
+  label: string;
+  description: string;
+}
+
 const AdminPage: React.FC = () => {
   const [challenges, setChallenges] = useState<any[]>([]);
   const [userSummaries, setUserSummaries] = useState<UserSummary[]>([]);
@@ -22,12 +27,13 @@ const AdminPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'challenges' | 'users'>('challenges');
   const [editingUser, setEditingUser] = useState<string | null>(null);
 
-  // Form state challenges (ORIGINEEL)
+  // Form state challenges
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
   const [startDate, setStartDate] = useState('');
   const [deadlineDate, setDeadlineDate] = useState('');
+  const [options, setOptions] = useState<ChallengeOption[]>([{ label: '', description: '' }]);
 
   // Form state users
   const [editDisplayName, setEditDisplayName] = useState('');
@@ -36,7 +42,6 @@ const AdminPage: React.FC = () => {
   const fetchAdminData = useCallback(async () => {
     const supabase = getSupabase();
 
-    // ORIGINELE Challenges fetch
     const { data: chs } = await supabase
       .from('challenges')
       .select('*')
@@ -54,7 +59,6 @@ const AdminPage: React.FC = () => {
     });
     setStats(countMap);
 
-    // Users fetch + checkins
     const { data: users } = await supabase
       .from('users')
       .select('id, display_name, avatar_url, admin, created_at');
@@ -67,7 +71,6 @@ const AdminPage: React.FC = () => {
         challenges!inner(title)
       `);
 
-    // Transform naar UserSummary
     const summaries: UserSummary[] = (users || []).map((u: any) => ({
       user_uuid: u.id,
       display_name: u.display_name,
@@ -79,7 +82,6 @@ const AdminPage: React.FC = () => {
       latest_challenge: null
     }));
 
-    // Checkins per user tellen + laatste challenge
     checkins?.forEach((checkin: any) => {
       const user = summaries.find(s => s.user_uuid === checkin.user_id);
       if (user) {
@@ -120,7 +122,6 @@ const AdminPage: React.FC = () => {
     checkAdminStatus();
   }, [checkAdminStatus]);
 
-  // ORIGINELE challenge functies
   const handleAddChallenge = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !startDate) return;
@@ -128,6 +129,9 @@ const AdminPage: React.FC = () => {
     const dateObj = new Date(startDate);
     const startOfYear = new Date(dateObj.getFullYear(), 0, 1);
     const week = Math.ceil((((dateObj.getTime() - startOfYear.getTime()) / 86400000) + startOfYear.getDay() + 1) / 7);
+
+    // Filter lege opties eruit
+    const validOptions = options.filter(opt => opt.label.trim() && opt.description.trim());
 
     const supabase = getSupabase();
     const { error } = await supabase.from('challenges').insert({
@@ -138,15 +142,36 @@ const AdminPage: React.FC = () => {
       deadline_date: deadlineDate || null,
       week,
       active: false,
-      levels: ['Light', 'Standard', 'Pro'],
+      options: validOptions.length > 0 ? validOptions : []
     });
 
     if (!error) {
-      setTitle(''); setDescription(''); setVideoUrl(''); setStartDate(''); setDeadlineDate('');
+      setTitle('');
+      setDescription('');
+      setVideoUrl('');
+      setStartDate('');
+      setDeadlineDate('');
+      setOptions([{ label: '', description: '' }]);
       fetchAdminData();
     } else {
       alert(error.message);
     }
+  };
+
+  const addOption = () => {
+    if (options.length < 3) {
+      setOptions([...options, { label: '', description: '' }]);
+    }
+  };
+
+  const removeOption = (index: number) => {
+    setOptions(options.filter((_, i) => i !== index));
+  };
+
+  const updateOption = (index: number, field: 'label' | 'description', value: string) => {
+    const newOptions = [...options];
+    newOptions[index][field] = value;
+    setOptions(newOptions);
   };
 
   const toggleActive = async (id: number, current: boolean) => {
@@ -162,7 +187,6 @@ const AdminPage: React.FC = () => {
     fetchAdminData();
   };
 
-  // USER ACTIONS
   const updateUser = async (userId: string) => {
     const supabase = getSupabase();
     await supabase
@@ -200,8 +224,7 @@ const AdminPage: React.FC = () => {
   if (!isAdmin) return <Navigate to="/" />;
 
   return (
-    <div className="max-w-[1400px] mx-auto px-4 md:px-0">
-      {/* HEADER - ORIGINEEL + stats */}
+    <div className="max-w-[1400px] mx-auto px-4 md:px-0 pb-12">
       <header className="mb-10 md:mb-12 text-center md:text-left flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-4xl md:text-5xl font-black text-gray-800 tracking-tight">
@@ -214,21 +237,20 @@ const AdminPage: React.FC = () => {
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-center">
           <div className="bg-white px-6 py-4 rounded-[2rem] border-2 border-gray-100 shadow-sm">
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Challenges</span>
-            <span className="text-2xl font-black text-gray-800">{challenges.length}</span>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Challenges</p>
+            <p className="text-2xl font-black text-gray-800">{challenges.length}</p>
           </div>
           <div className="bg-white px-6 py-4 rounded-[2rem] border-2 border-gray-100 shadow-sm">
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Gebruikers</span>
-            <span className="text-2xl font-black text-gray-800">{userSummaries.length}</span>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Gebruikers</p>
+            <p className="text-2xl font-black text-gray-800">{userSummaries.length}</p>
           </div>
           <div className="bg-white px-6 py-4 rounded-[2rem] border-2 border-gray-100 shadow-sm">
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Checkins</span>
-            <span className="text-2xl font-black text-gray-800">{Object.values(stats).reduce((a, b) => a + b, 0)}</span>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Checkins</p>
+            <p className="text-2xl font-black text-gray-800">{Object.values(stats).reduce((a, b) => a + b, 0)}</p>
           </div>
         </div>
       </header>
 
-      {/* TABS */}
       <div className="flex bg-white rounded-3xl p-1 shadow-sm border border-gray-200 mb-8">
         <button
           onClick={() => setActiveTab('challenges')}
@@ -252,10 +274,8 @@ const AdminPage: React.FC = () => {
         </button>
       </div>
 
-      {/* CHALLENGES TAB - 100% ORIGINEEL */}
       {activeTab === 'challenges' && (
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-8">
-          {/* LEFT: Challenges lijst - ORIGINEEL */}
           <div className="space-y-5">
             <h2 className="font-black text-gray-800 uppercase tracking-widest text-xs flex items-center gap-3 px-1">
               <span className="text-xl">📋</span> Bestaande Challenges
@@ -271,7 +291,7 @@ const AdminPage: React.FC = () => {
 
             {challenges.map((c: any) => (
               <section key={c.id} className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-sm overflow-hidden">
-                <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#55CDFC] via-[#58CC02] to-[#FFC800]" />
+                <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#55CDFC] via-[#58CC02] to-[#FFC800] rounded-t-3xl" />
                 <div className="pt-4 px-5 md:px-6 pb-5 space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-3">
@@ -292,6 +312,18 @@ const AdminPage: React.FC = () => {
                   <p className="text-gray-500 font-bold text-sm leading-relaxed italic">
                     "{c.description || 'Geen instructies beschikbaar'}"
                   </p>
+
+                  {c.options && c.options.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Opties:</p>
+                      {c.options.map((opt: ChallengeOption, idx: number) => (
+                        <div key={idx} className="bg-gray-50 px-4 py-3 rounded-xl border border-gray-200">
+                          <p className="font-black text-sm text-gray-800">{opt.label}</p>
+                          <p className="text-xs text-gray-600 font-semibold">{opt.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="flex flex-wrap items-center gap-3 text-[11px] font-black text-gray-500">
                     <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-2xl border border-gray-100">
@@ -340,7 +372,6 @@ const AdminPage: React.FC = () => {
             ))}
           </div>
 
-          {/* RIGHT: NIEUWE CHALLENGE FORM - 100% ORIGINEEL */}
           <aside className="space-y-6 lg:space-y-8">
             <section className="bg-[#F1FBFF] rounded-3xl border-2 border-[#55CDFC] p-7 md:p-8 shadow-sm">
               <div className="text-center space-y-1 mb-6">
@@ -414,10 +445,59 @@ const AdminPage: React.FC = () => {
                   <textarea
                     placeholder="Wat moeten de atleten precies doen?"
                     className="w-full bg-white border-2 border-[#D0ECFF] rounded-2xl px-4 py-3 text-sm font-bold text-gray-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] focus:outline-none focus:border-[#55CDFC] resize-none"
-                    rows={5}
+                    rows={4}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                   />
+                </div>
+
+                {/* OPTIES SECTIE */}
+                <div className="space-y-3 pt-2 border-t-2 border-[#D0ECFF]">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black text-[#55CDFC] uppercase tracking-widest">
+                      Opties (Optioneel, max 3)
+                    </label>
+                    {options.length < 3 && (
+                      <button
+                        type="button"
+                        onClick={addOption}
+                        className="text-xs font-black text-[#55CDFC] hover:text-[#1C8ED9] uppercase tracking-wider"
+                      >
+                        + Optie toevoegen
+                      </button>
+                    )}
+                  </div>
+
+                  {options.map((option, index) => (
+                    <div key={index} className="bg-white border-2 border-[#D0ECFF] rounded-2xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black text-gray-600">Optie {index + 1}</span>
+                        {options.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeOption(index)}
+                            className="text-red-400 hover:text-red-600 text-sm"
+                          >
+                            🗑️
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Naam (bv. Optie 1, Beginners, etc.)"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 focus:outline-none focus:border-[#55CDFC]"
+                        value={option.label}
+                        onChange={(e) => updateOption(index, 'label', e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Beschrijving (bv. 3x 10 pushups)"
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 focus:outline-none focus:border-[#55CDFC]"
+                        value={option.description}
+                        onChange={(e) => updateOption(index, 'description', e.target.value)}
+                      />
+                    </div>
+                  ))}
                 </div>
 
                 <button
@@ -432,10 +512,8 @@ const AdminPage: React.FC = () => {
         </div>
       )}
 
-      {/* GEBRUIKERS TAB - COMPLEET */}
       {activeTab === 'users' && (
         <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-8">
-          {/* LEFT: Gebruikers lijst */}
           <div className="space-y-5">
             <h2 className="font-black text-gray-800 uppercase tracking-widest text-xs flex items-center gap-3 px-1">
               <span className="text-xl">👥</span> Alle Gebruikers
@@ -450,13 +528,13 @@ const AdminPage: React.FC = () => {
             ) : (
               userSummaries.map((user) => (
                 <section key={user.user_uuid} className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-sm overflow-hidden">
-                  <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-orange-400 via-yellow-400 to-pink-400" />
+                  <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-orange-400 via-yellow-400 to-pink-400 rounded-t-3xl" />
                   <div className="pt-4 px-5 md:px-6 pb-5 space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center overflow-hidden">
                           {user.avatar_url ? (
-                            <img src={user.avatar_url} alt="avatar" className="w-10 h-10 rounded-xl object-cover" />
+                            <img src={user.avatar_url} alt="avatar" className="w-full h-full object-cover" />
                           ) : (
                             <span className="text-xl font-black text-gray-500">
                               {user.display_name?.[0]?.toUpperCase() || '👤'}
@@ -488,7 +566,7 @@ const AdminPage: React.FC = () => {
                       </div>
                       <div className="bg-gray-50 px-4 py-3 rounded-xl border">
                         <div className="font-black text-gray-500 text-xs uppercase tracking-wider">Laatste</div>
-                        <div className="font-bold text-sm">{user.latest_challenge || 'Nog geen'}</div>
+                        <div className="font-bold text-sm truncate">{user.latest_challenge || 'Nog geen'}</div>
                       </div>
                       <div className="bg-gray-50 px-4 py-3 rounded-xl border">
                         <div className="font-black text-gray-500 text-xs uppercase tracking-wider">Status</div>
@@ -498,15 +576,15 @@ const AdminPage: React.FC = () => {
 
                     <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-100">
                       {editingUser === user.user_uuid ? (
-                        <div className="flex items-center gap-2 flex-1">
+                        <div className="flex items-center gap-2 flex-1 flex-wrap">
                           <input
                             type="text"
                             placeholder="Nieuwe naam"
-                            className="flex-1 px-4 py-2 border-2 border-gray-200 rounded-xl text-sm font-bold focus:border-[#55CDFC] focus:outline-none"
+                            className="flex-1 min-w-[150px] px-4 py-2 border-2 border-gray-200 rounded-xl text-sm font-bold focus:border-[#55CDFC] focus:outline-none"
                             value={editDisplayName}
                             onChange={(e) => setEditDisplayName(e.target.value)}
                           />
-                          <label className="flex items-center gap-2 text-sm">
+                          <label className="flex items-center gap-2 text-sm font-bold">
                             <input
                               type="checkbox"
                               checked={editAdminStatus}
@@ -518,13 +596,13 @@ const AdminPage: React.FC = () => {
                           <div className="flex gap-1">
                             <button
                               onClick={() => updateUser(user.user_uuid)}
-                              className="px-4 py-2 bg-[#55CDFC] text-white rounded-xl text-xs font-black uppercase tracking-wider"
+                              className="px-4 py-2 bg-[#55CDFC] text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-[#1C8ED9]"
                             >
                               ✅ Opslaan
                             </button>
                             <button
                               onClick={() => setEditingUser(null)}
-                              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-xl text-xs font-black uppercase tracking-wider"
+                              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-xl text-xs font-black uppercase tracking-wider hover:bg-gray-300"
                             >
                               ❌ Annuleer
                             </button>
@@ -557,7 +635,6 @@ const AdminPage: React.FC = () => {
             )}
           </div>
 
-          {/* RIGHT: USER STATS SIDEBAR */}
           <aside className="space-y-6">
             <section className="bg-white rounded-3xl border-2 border-gray-100 p-8 shadow-sm text-center">
               <span className="text-4xl mb-4 block">📊</span>
