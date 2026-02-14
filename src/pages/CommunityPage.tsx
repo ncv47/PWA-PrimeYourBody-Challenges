@@ -25,6 +25,7 @@ type ChallengeCommentWithMeta = {
 const CommunityPage: React.FC = () => {
   const [posts, setPosts] = useState<ChallengeCommentWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
+  const [monthlyWinners, setMonthlyWinners] = useState<any[]>([]);
 
   const fetchPosts = async () => {
     setLoading(true);
@@ -32,6 +33,22 @@ const CommunityPage: React.FC = () => {
     const { data: { user } } = await supabase.auth.getUser();
     
     const isAdmin = user?.user_metadata?.admin || false;
+
+    const monthKey =
+      'monthly_' +
+      new Date().toISOString().slice(0, 7).replace('-', '_');
+
+    const { data: winners } = await supabase
+      .from('user_badges')
+      .select(`
+        user_id,
+        earned_at,
+        users:users(display_name, avatar_url)
+      `)
+      .eq('badge_key', monthKey);
+
+setMonthlyWinners(winners || []);
+
 
     const { data, error } = await supabase
       .from('challenge_comments')
