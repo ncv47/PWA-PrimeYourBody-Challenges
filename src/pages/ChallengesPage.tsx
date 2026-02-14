@@ -635,6 +635,28 @@ const ChallengesPage: React.FC = () => {
               <div className="h-full bg-[#55CDFC] transition-all duration-500" style={{ width: `${Math.min((monthlyCount / 4) * 100, 100)}%` }} />
             </div>
           </section>
+          <section className="bg-[#F1FBFF] rounded-3xl border-2 border-[#55CDFC] p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black text-[#55CDFC] uppercase tracking-widest">
+                  Maand
+                </p>
+                <p className="mt-1 text-2xl font-black text-gray-800">
+                  {monthlyCount} / 4
+                </p>
+              </div>
+
+              <div className="text-3xl">
+                {monthlyCount >= 4 ? '🏅' : '🔥'}
+              </div>
+            </div>
+
+            {monthlyCount >= 4 && (
+              <p className="mt-3 text-xs font-black text-green-600 uppercase tracking-widest">
+                Badge verdiend
+              </p>
+            )}
+          </section>
         </aside>
       </div>
     </div>
