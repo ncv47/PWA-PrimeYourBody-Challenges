@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getSupabase } from '../lib/supabase.ts';
+import { getSupabase, completeChallenge, getMonthlyProgress, getMyCompletedChallengeIds } from '../lib/supabase.ts';
 import { Challenge, CheckIn, ChallengeComment } from '../types.ts';
 
 // Interface uitbreiden voor de dynamische opties uit het admin panel
@@ -22,71 +22,79 @@ const ChallengesPage: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [editing, setEditing] = useState<Record<number, boolean>>({});
   const [deleting, setDeleting] = useState<Record<number, boolean>>({});
+  const [completedIds, setCompletedIds] = useState<number[]>([]); 
 
-  const fetchData = async () => {
+    const fetchData = async () => {
     setLoading(true);
-    const supabase = getSupabase();
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
+
+    try {
+      const supabase = getSupabase();
+      const { data: { user }, error: userErr } = await supabase.auth.getUser();
+
+      if (userErr) throw userErr;
+
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      const { data: activeChallenges, error: chErr } = await supabase
+        .from('challenges')
+        .select('*')
+        .eq('active', true)
+        .order('week', { ascending: false });
+
+      if (chErr) throw chErr;
+
+      const { data: userComments, error: comErr } = await supabase
+        .from('challenge_comments')
+        .select(`
+          id,
+          challenge_id,
+          user_id,
+          text,
+          proof_url,
+          visibility,
+          created_at,
+          updated_at,
+          parent_id,
+          users:users!inner(display_name, admin, avatar_url)
+        `)
+        .eq('user_id', user.id);
+
+      if (comErr) throw comErr;
+
+      const completed = await getMyCompletedChallengeIds();
+      setCompletedIds(completed);
+
+      const monthCount = await getMonthlyProgress();
+      setMonthlyCount(monthCount);
+
+      const challengesWithData: ChallengeWithData[] = (activeChallenges || []).map((challenge: any) => ({
+        ...challenge,
+        checkins: completed.includes(challenge.id)
+          ? [{ id: 0, user_id: user.id, challenge_id: challenge.id, level: '', created_at: '' }]
+          : [],
+        my_comments: (userComments || [])
+          .map((c: any) => ({
+            ...c,
+            parent_id: c.parent_id || null,
+            users: Array.isArray(c.users) ? c.users : []
+          }))
+          .filter((c: ChallengeComment) => c.challenge_id === challenge.id)
+          .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      }));
+
+      setChallenges(challengesWithData);
+    } catch (err: any) {
+      console.error('fetchData error:', err);
+      console.error('fetchData error JSON:', JSON.stringify(err, null, 2));
+      alert(`fetchData error: ${err?.message || err?.error_description || 'Unknown error'}`);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { data: activeChallenges } = await supabase
-      .from('challenges')
-      .select('*')
-      .eq('active', true)
-      .order('week', { ascending: false });
-
-    const { data: userCheckins } = await supabase
-      .from('challenge_checkins')
-      .select('*')
-      .eq('user_id', user.id);
-
-    const { data: userComments } = await supabase
-      .from('challenge_comments')
-      .select(`
-        id,
-        challenge_id,
-        user_id,
-        text,
-        proof_url,
-        visibility,
-        created_at,
-        updated_at,
-        parent_id,
-        users:users!inner(display_name, admin, avatar_url)
-      `)
-      .eq('user_id', user.id);
-
-    const challengesWithData: ChallengeWithData[] = (activeChallenges || []).map((challenge: any) => ({
-      ...challenge,
-      checkins: (userCheckins || []).filter((ci: CheckIn) => ci.challenge_id === challenge.id),
-      my_comments: (userComments || [])
-        .map((c: any) => ({
-          ...c,
-          parent_id: c.parent_id || null,
-          users: Array.isArray(c.users) ? c.users : []
-        }))
-        .filter((c: ChallengeComment) => c.challenge_id === challenge.id)
-        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    }));
-
-    setChallenges(challengesWithData);
-
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
-    const { data: monthRows } = await supabase
-      .from('challenge_checkins')
-      .select('id')
-      .eq('user_id', user.id)
-      .gte('created_at', startOfMonth.toISOString());
-    
-    setMonthlyCount(monthRows?.length || 0);
-    setLoading(false);
   };
+
 
   useEffect(() => {
     fetchData();
@@ -102,30 +110,34 @@ const ChallengesPage: React.FC = () => {
   };
 
   const handleDone = async (challenge: ChallengeWithData) => {
-    const supabase = getSupabase();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
     const level = selectedLevels[challenge.id];
     if (!level) {
       alert("Kies eerst een niveau!");
       return;
     }
 
-    const { error } = await supabase.from('challenge_checkins').insert({
-      challenge_id: challenge.id,
-      user_id: user.id,
-      level,
-    });
+    try {
+      await completeChallenge(challenge.id, level);
 
-    if (!error) {
       setSuccessMessage(`✅ Challenge "${challenge.title}" voltooid!`);
       setTimeout(() => setSuccessMessage(null), 4000);
+
       await fetchData();
-    } else {
-      alert('Je hebt deze challenge al voltooid!');
+    } catch (err: any) {
+      console.error('handleDone error:', err);
+      console.error('handleDone error JSON:', JSON.stringify(err, null, 2));
+
+      const msg =
+        err?.message ||
+        err?.error_description ||
+        err?.details ||
+        err?.hint ||
+        `Unknown error (code: ${err?.code || 'n/a'})`;
+
+      alert(`Done failed: ${msg}`);
     }
   };
+
 
   const handleCommentSubmit = async (challengeId: number) => {
     if (!confirming[challengeId]) {
@@ -311,7 +323,8 @@ const ChallengesPage: React.FC = () => {
     setProofFiles(prev => ({ ...prev, [challengeId]: file }));
   };
 
-  const isDone = (challenge: ChallengeWithData) => challenge.checkins.length > 0;
+  const isDone = (challenge: ChallengeWithData) =>
+    completedIds.includes(challenge.id);
   const hasPosted = (challenge: ChallengeWithData) => challenge.my_comments.length > 0;
 
   if (loading) {
@@ -620,15 +633,6 @@ const ChallengesPage: React.FC = () => {
             </div>
             <div className="h-3 w-full bg-[#F3F4F6] rounded-full overflow-hidden">
               <div className="h-full bg-[#55CDFC] transition-all duration-500" style={{ width: `${Math.min((monthlyCount / 4) * 100, 100)}%` }} />
-            </div>
-          </section>
-          <section className="bg-[#F1FBFF] rounded-3xl border-2 border-[#55CDFC] p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-black text-[#55CDFC] uppercase tracking-widest">Punten</p>
-                <p className="mt-1 text-2xl font-black text-gray-800">420 XP</p>
-              </div>
-              <span className="text-3xl">💪</span>
             </div>
           </section>
         </aside>
