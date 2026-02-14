@@ -104,42 +104,6 @@ setMonthlyWinners(winners || []);
           "Lees ervaringen van anderen en laat je motiveren!"
         </p>
       </div>
-      <section className="bg-white rounded-3xl p-8 duo-card">
-        <h3 className="font-black uppercase mb-6 flex items-center gap-2">
-          🏅 Maandbadge
-        </h3>
-
-        {monthlyWinners.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
-            {monthlyWinners.map((w) => (
-              <div
-                key={w.user_id}
-                className="flex flex-col items-center text-center"
-              >
-                <div className="w-16 h-16 rounded-2xl overflow-hidden mb-2 border-2 border-gray-200">
-                  {w.users?.avatar_url ? (
-                    <img
-                      src={w.users.avatar_url}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-xl">
-                      👤
-                    </div>
-                  )}
-                </div>
-                <p className="font-black text-sm">
-                  {w.users?.display_name || 'Sporter'}
-                </p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400 uppercase font-black">
-            Nog geen badges deze maand
-          </p>
-        )}  
-      </section>
 
       <div className="space-y-12">
         {posts.length === 0 ? (

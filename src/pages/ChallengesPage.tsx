@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getSupabase, completeChallenge, getMonthlyProgress, getMyCompletedChallengeIds } from '../lib/supabase.ts';
+import { getSupabase, completeChallenge, getMonthlyProgress, getMyCompletedChallengeIds, getLifetimeProgress } from '../lib/supabase.ts';
 import { Challenge, CheckIn, ChallengeComment } from '../types.ts';
 
 // Interface uitbreiden voor de dynamische opties uit het admin panel
@@ -23,6 +23,7 @@ const ChallengesPage: React.FC = () => {
   const [editing, setEditing] = useState<Record<number, boolean>>({});
   const [deleting, setDeleting] = useState<Record<number, boolean>>({});
   const [completedIds, setCompletedIds] = useState<number[]>([]); 
+  const [lifetimeCount, setLifetimeCount] = useState(0);
 
     const fetchData = async () => {
     setLoading(true);
@@ -69,6 +70,9 @@ const ChallengesPage: React.FC = () => {
 
       const monthCount = await getMonthlyProgress();
       setMonthlyCount(monthCount);
+
+      const lifetime = await getLifetimeProgress();
+      setLifetimeCount(lifetime);
 
       const challengesWithData: ChallengeWithData[] = (activeChallenges || []).map((challenge: any) => ({
         ...challenge,
@@ -657,6 +661,34 @@ const ChallengesPage: React.FC = () => {
               </p>
             )}
           </section>
+          <section className="bg-white rounded-3xl border-2 border-gray-200 p-6">
+            <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
+              Lifetime
+            </p>
+
+            <div className="mt-2 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-black text-gray-800">
+                  10 Challenges
+                </span>
+                <span className="text-sm font-black">
+                  {Math.min(lifetimeCount, 10)} / 10
+                  {lifetimeCount >= 10 && ' 🥉'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="font-black text-gray-800">
+                  100 Challenges
+                </span>
+                <span className="text-sm font-black">
+                  {Math.min(lifetimeCount, 100)} / 100
+                  {lifetimeCount >= 100 && ' 🏆'}
+                </span>
+              </div>
+            </div>
+          </section>
+
         </aside>
       </div>
     </div>

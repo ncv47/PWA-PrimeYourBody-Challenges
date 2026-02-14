@@ -120,6 +120,7 @@ export async function getMonthlyProgress(): Promise<number> {
   return Math.min(count ?? 0, 4);
 }
 
+
 export async function getLifetimeProgress(): Promise<number> {
   const supabase = getSupabase();
 
