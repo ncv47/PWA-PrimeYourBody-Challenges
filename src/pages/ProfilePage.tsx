@@ -4,15 +4,38 @@ import React, {
   ChangeEvent,
   FormEvent,
 } from 'react';
-import { getSupabase } from '../lib/supabase.ts';
-import { UserProfile, Badge } from '../types.ts';
+import { getSupabase, getUserBadges } from '../lib/supabase.ts';
+import { UserProfile } from '../types.ts';
 
 const AVATAR_BUCKET = 'avatars';
 
+/* =========================
+   Badge display mapping
+========================= */
+
+type UserBadge = {
+  id: number;
+  badge_key: string;
+  earned_at: string;
+};
+
+const BADGE_META: Record<
+  string,
+  { title: string; icon: string }
+> = {
+  challenge_completed_key: {
+    title: 'Challenge Voltooid',
+    icon: '🏅',
+  },
+  lifetime_10: {
+    title: 'Doorzetter',
+    icon: '🔥',
+  },
+};
+
 const ProfilePage: React.FC = () => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [badges, setBadges] = useState<Badge[]>([]);
-  const [totalPoints, setTotalPoints] = useState(0);
+  const [badges, setBadges] = useState<UserBadge[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -30,49 +53,24 @@ const ProfilePage: React.FC = () => {
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError) {
-        console.error('Error fetching auth user', userError);
+      if (userError || !user) {
         setLoading(false);
         return;
       }
 
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
-      // Profiel
-      const { data: prof, error: profileError } = await supabase
+      const { data: prof } = await supabase
         .from('users')
         .select('*')
         .eq('id', user.id)
         .maybeSingle();
-
-      if (profileError) {
-        console.error('Error fetching profile', profileError);
-      }
 
       const castProfile = (prof || null) as UserProfile | null;
       setProfile(castProfile);
       setDisplayName(castProfile?.display_name ?? '');
       setAvatarPreview(castProfile?.avatar_url ?? null);
 
-      // Badges
-      const { data: badgeData, error: badgeError } = await supabase
-        .from('user_badges')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('earned_at', { ascending: false });
-
-      if (badgeError) {
-        console.error('Error fetching badges', badgeError);
-      }
-
-      const badgeList = (badgeData || []) as Badge[];
-      setBadges(badgeList);
-      setTotalPoints(
-        badgeList.reduce((sum, item) => sum + (item.points ?? 0), 0)
-      );
+      const badgeData = await getUserBadges();
+      setBadges(badgeData as UserBadge[]);
 
       setLoading(false);
     };
@@ -85,17 +83,13 @@ const ProfilePage: React.FC = () => {
     if (!file) return;
 
     setAvatarFile(file);
-
-    // Local preview (alleen in deze sessie)
-    const url = URL.createObjectURL(file);
-    setAvatarPreview(url);
+    setAvatarPreview(URL.createObjectURL(file));
   };
 
   const toggleEdit = () => {
     if (!profile) return;
 
     if (!isEditing) {
-      // Edit mode in: sync velden met huidige profieldata
       setDisplayName(profile.display_name ?? '');
       setAvatarPreview(profile.avatar_url ?? null);
       setAvatarFile(null);
@@ -112,33 +106,22 @@ const ProfilePage: React.FC = () => {
     let newAvatarUrl = profile.avatar_url ?? null;
 
     try {
-      // 1) Upload avatar als er een nieuwe file is gekozen
       if (avatarFile) {
-        const fileExt = avatarFile.name.split('.').pop() || 'png';
-        const filePath = `${profile.id}.${fileExt}`;
+        const ext = avatarFile.name.split('.').pop() || 'png';
+        const path = `${profile.id}.${ext}`;
 
-        const { error: uploadError } = await supabase.storage
+        await supabase.storage
           .from(AVATAR_BUCKET)
-          .upload(filePath, avatarFile, {
-            cacheControl: '3600',
-            upsert: true,
-          });
+          .upload(path, avatarFile, { upsert: true });
 
-        if (uploadError) {
-          console.error('Error uploading avatar', uploadError);
-          throw uploadError;
-        }
-
-        // Public URL ophalen en in DB opslaan
-        const { data: publicUrlData } = supabase.storage
+        const { data } = supabase.storage
           .from(AVATAR_BUCKET)
-          .getPublicUrl(filePath);
+          .getPublicUrl(path);
 
-        newAvatarUrl = publicUrlData.publicUrl;
+        newAvatarUrl = data.publicUrl;
       }
 
-      // 2) Profiel updaten
-      const { data: updated, error: updateError } = await supabase
+      const { data: updated } = await supabase
         .from('users')
         .update({
           display_name: displayName || null,
@@ -148,19 +131,10 @@ const ProfilePage: React.FC = () => {
         .select()
         .maybeSingle();
 
-      if (updateError) {
-        console.error('Error updating profile', updateError);
-        throw updateError;
-      }
-
-      const updatedProfile = updated as UserProfile;
-      setProfile(updatedProfile);
-      setAvatarPreview(updatedProfile.avatar_url ?? null);
+      setProfile(updated as UserProfile);
+      setAvatarPreview(updated?.avatar_url ?? null);
       setAvatarFile(null);
       setIsEditing(false);
-    } catch (err) {
-      console.error('Failed to save profile', err);
-      // TODO: UI toast tonen
     } finally {
       setSaving(false);
     }
@@ -177,11 +151,8 @@ const ProfilePage: React.FC = () => {
   if (!profile) {
     return (
       <div className="text-center py-20">
-        <p className="font-black text-gray-700 mb-4">
+        <p className="font-black text-gray-700">
           Geen profiel gevonden.
-        </p>
-        <p className="text-sm text-gray-500">
-          Log opnieuw in of neem contact op met je coach.
         </p>
       </div>
     );
@@ -189,9 +160,9 @@ const ProfilePage: React.FC = () => {
 
   return (
     <div className="space-y-10 max-w-[800px] mx-auto">
-      {/* Profiel + edit toggle */}
+
+      {/* Profile card */}
       <section className="bg-white rounded-3xl p-10 duo-card relative flex flex-col items-center text-center">
-        {/* Edit button rechtsboven */}
         <button
           type="button"
           onClick={toggleEdit}
@@ -205,7 +176,7 @@ const ProfilePage: React.FC = () => {
             {avatarPreview ? (
               <img
                 src={avatarPreview}
-                alt="Profiel foto"
+                alt="Avatar"
                 className="w-full h-full object-cover"
               />
             ) : (
@@ -232,14 +203,12 @@ const ProfilePage: React.FC = () => {
         >
           {isEditing ? (
             <input
-              type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Jouw naam"
-              className="w-full text-center border-2 border-gray-200 rounded-2xl px-4 py-2 font-black text-gray-800 focus:outline-none focus:border-[#55CDFC]"
+              className="w-full text-center border-2 border-gray-200 rounded-2xl px-4 py-2 font-black"
             />
           ) : (
-            <h1 className="text-4xl font-black text-gray-800 tracking-tight">
+            <h1 className="text-4xl font-black">
               {profile.display_name || 'Sporter'}
             </h1>
           )}
@@ -248,33 +217,18 @@ const ProfilePage: React.FC = () => {
             {profile.admin ? 'Coach Status' : 'Atleet'}
           </p>
 
-          <div className="mt-4 flex gap-12">
-            <div className="text-center">
-              <p className="text-3xl font-black text-gray-800">
-                {totalPoints}
-              </p>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">
-                Punten
-              </p>
-            </div>
-
-            <div className="w-px bg-gray-100 self-stretch" />
-
-            <div className="text-center">
-              <p className="text-3xl font-black text-gray-800">
-                {badges.length}
-              </p>
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-1">
-                Badges
-              </p>
-            </div>
+          <div className="mt-4 text-center">
+            <p className="text-3xl font-black">{badges.length}</p>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+              Badges
+            </p>
           </div>
 
           {isEditing && (
             <button
               type="submit"
               disabled={saving}
-              className="mt-6 px-6 py-2 rounded-2xl bg-[#55CDFC] text-white font-black uppercase text-xs tracking-[0.2em] hover:bg-[#3cb3df] disabled:opacity-60"
+              className="mt-6 px-6 py-2 rounded-2xl bg-[#55CDFC] text-white font-black uppercase text-xs tracking-[0.2em]"
             >
               {saving ? 'Opslaan...' : 'Profiel opslaan'}
             </button>
@@ -282,41 +236,45 @@ const ProfilePage: React.FC = () => {
         </form>
       </section>
 
-      {/* Badges sectie blijft hetzelfde */}
+      {/* Badges */}
       <section>
         <div className="flex items-center gap-3 mb-6 px-2">
           <span className="text-2xl">🏅</span>
-          <h2 className="text-xl font-black text-gray-800 uppercase tracking-tight">
+          <h2 className="text-xl font-black uppercase">
             Mijn Badges
           </h2>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
           {badges.length > 0 ? (
-            badges.map((badge) => (
-              <div
-                key={badge.id}
-                className="bg-white rounded-3xl p-8 duo-card flex flex-col items-center text-center group hover:scale-[1.05] transition-all"
-              >
-                <div className="text-5xl mb-4 transform group-hover:rotate-12 transition-transform">
-                  💎
+            badges.map((badge) => {
+              const meta =
+                BADGE_META[badge.badge_key] ?? {
+                  title: badge.badge_key,
+                  icon: '🎖️',
+                };
+
+              return (
+                <div
+                  key={badge.id}
+                  className="bg-white rounded-3xl p-8 duo-card flex flex-col items-center text-center"
+                >
+                  <div className="text-5xl mb-4">
+                    {meta.icon}
+                  </div>
+                  <h4 className="font-black text-sm uppercase">
+                    {meta.title}
+                  </h4>
+                  <p className="text-[10px] text-gray-400 mt-2">
+                    {new Date(badge.earned_at).toLocaleDateString('nl-NL')}
+                  </p>
                 </div>
-                <h4 className="font-black text-gray-800 text-sm leading-tight uppercase tracking-tighter">
-                  {badge.badge_name === 'month_4x'
-                    ? 'Maand Kampioen'
-                    : badge.badge_name}
-                </h4>
-                <p className="text-[10px] font-black text-[#55CDFC] uppercase mt-3 tracking-widest">
-                  +{badge.points} XP
-                </p>
-              </div>
-            ))
+              );
+            })
           ) : (
             <div className="col-span-full bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl p-16 text-center">
               <p className="text-gray-400 font-black uppercase tracking-widest text-xs">
-                Begin een challenge om je
-                <br />
-                eerste badge te verdienen!
+                Begin een challenge om je eerste badge te verdienen!
               </p>
             </div>
           )}
