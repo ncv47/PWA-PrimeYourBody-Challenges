@@ -12,11 +12,14 @@ import {
 import { getSupabase } from './lib/supabase.ts';
 
 import LoginPage from './pages/LoginPage.tsx';
-import HomePage from './pages/HomePage.tsx'; // Landing page
-import ChallengesPage from './pages/ChallengesPage.tsx'; // was HomePage
+import HomePage from './pages/HomePage.tsx';
+import ChallengesPage from './pages/ChallengesPage.tsx';
 import CommunityPage from './pages/CommunityPage.tsx';
 import ProfilePage from './pages/ProfilePage.tsx';
 import AdminPage from './pages/AdminPage.tsx';
+
+/* ✅ NEW: public user profile page */
+import UserProfilePage from './pages/UserProfilePage.tsx';
 
 const App: React.FC = () => {
   return (
@@ -71,7 +74,6 @@ const AppInner: React.FC = () => {
     );
   }
 
-  // Anonieme users krijgen geen sidebar/padding
   const showSidebar = !!session;
 
   return (
@@ -85,14 +87,18 @@ const AppInner: React.FC = () => {
       >
         <div className="w-full max-w-[1400px] px-4 md:px-10 py-10">
           <Routes>
-            {/* Publieke routes */}
+            {/* Public routes */}
             <Route path="/" element={<HomePage />} />
             <Route path="/login" element={!session ? <LoginPage /> : <Navigate to="/challenges" />} />
 
-            {/* Alleen voor ingelogde users */}
+            {/* Authenticated routes */}
             <Route path="/challenges" element={session ? <ChallengesPage /> : <Navigate to="/login" />} />
             <Route path="/community" element={session ? <CommunityPage /> : <Navigate to="/login" />} />
             <Route path="/profile" element={session ? <ProfilePage /> : <Navigate to="/login" />} />
+
+            {/* ✅ NEW: view other users' profiles */}
+            <Route path="/user/:userId" element={session ? <UserProfilePage /> : <Navigate to="/login" />} />
+
             <Route path="/admin" element={session && isAdmin ? <AdminPage /> : <Navigate to="/challenges" />} />
           </Routes>
         </div>
