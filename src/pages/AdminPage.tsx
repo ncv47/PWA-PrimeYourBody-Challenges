@@ -24,7 +24,7 @@ const AdminPage: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<Record<number, number>>({});
-  const [activeTab, setActiveTab] = useState<'challenges' | 'users'>('challenges');
+  const [activeTab, setActiveTab] = useState<'challenges' | 'community' | 'users'>('challenges');
   const [editingUser, setEditingUser] = useState<string | null>(null);
 
   // Form state challenges
@@ -39,6 +39,13 @@ const AdminPage: React.FC = () => {
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editAdminStatus, setEditAdminStatus] = useState(false);
 
+  // Community challenges
+  const [communityChallenges, setCommunityChallenges] = useState<any[]>([]);
+  const [communityTitle, setCommunityTitle] = useState('');
+  const [communityDescription, setCommunityDescription] = useState('');
+  const [communityTarget, setCommunityTarget] = useState(100);
+  const [editingCommunityId, setEditingCommunityId] = useState<string | null>(null);
+
   const fetchAdminData = useCallback(async () => {
     const supabase = getSupabase();
 
@@ -52,6 +59,13 @@ const AdminPage: React.FC = () => {
     const { data: checkinStats } = await supabase
       .from('challenge_checkins')
       .select('challenge_id');
+
+    const { data: communityData } = await supabase
+      .from('community_challenges')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    setCommunityChallenges(communityData || []);
 
     const countMap: Record<number, number> = {};
     checkinStats?.forEach((c: any) => {
@@ -79,13 +93,13 @@ const AdminPage: React.FC = () => {
       joined_date: new Date(u.created_at).toLocaleDateString('nl-NL'),
       total_checkins: 0,
       total_points: 0,
-      latest_challenge: null
+      latest_challenge: null,
     }));
 
     checkins?.forEach((checkin: any) => {
-      const user = summaries.find(s => s.user_uuid === checkin.user_id);
+      const user = summaries.find((s) => s.user_uuid === checkin.user_id);
       if (user) {
-        user.total_checkins++;
+        user.total_checkins += 1;
         if (!user.latest_challenge && checkin.challenges?.title) {
           user.latest_challenge = checkin.challenges.title;
         }
@@ -96,9 +110,15 @@ const AdminPage: React.FC = () => {
     setLoading(false);
   }, []);
 
+  const refreshAdminData = useCallback(async () => {
+    await fetchAdminData();
+  }, [fetchAdminData]);
+
   const checkAdminStatus = useCallback(async () => {
     const supabase = getSupabase();
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) {
       setLoading(false);
       return;
@@ -128,10 +148,13 @@ const AdminPage: React.FC = () => {
 
     const dateObj = new Date(startDate);
     const startOfYear = new Date(dateObj.getFullYear(), 0, 1);
-    const week = Math.ceil((((dateObj.getTime() - startOfYear.getTime()) / 86400000) + startOfYear.getDay() + 1) / 7);
+    const week = Math.ceil(
+      (((dateObj.getTime() - startOfYear.getTime()) / 86400000) + startOfYear.getDay() + 1) / 7
+    );
 
-    // Filter lege opties eruit
-    const validOptions = options.filter(opt => opt.label.trim() && opt.description.trim());
+    const validOptions = options.filter(
+      (opt) => opt.label.trim() && opt.description.trim()
+    );
 
     const supabase = getSupabase();
     const { error } = await supabase.from('challenges').insert({
@@ -142,7 +165,7 @@ const AdminPage: React.FC = () => {
       deadline_date: deadlineDate || null,
       week,
       active: false,
-      options: validOptions.length > 0 ? validOptions : []
+      options: validOptions.length > 0 ? validOptions : [],
     });
 
     if (!error) {
@@ -152,9 +175,9 @@ const AdminPage: React.FC = () => {
       setStartDate('');
       setDeadlineDate('');
       setOptions([{ label: '', description: '' }]);
-      fetchAdminData();
+      refreshAdminData();
     } else {
-      alert(error.message);
+      globalThis.alert?.(error.message);
     }
   };
 
@@ -170,45 +193,52 @@ const AdminPage: React.FC = () => {
 
   const updateOption = (index: number, field: 'label' | 'description', value: string) => {
     const newOptions = [...options];
-    newOptions[index][field] = value;
+    newOptions[index] = {
+      ...newOptions[index],
+      [field]: value,
+    };
     setOptions(newOptions);
   };
 
   const toggleActive = async (id: number, current: boolean) => {
     const supabase = getSupabase();
     await supabase.from('challenges').update({ active: !current }).eq('id', id);
-    fetchAdminData();
+    refreshAdminData();
   };
 
   const deleteChallenge = async (id: number) => {
-    if (!window.confirm('Weet je zeker dat je deze challenge wilt verwijderen?')) return;
+    if (!globalThis.confirm || !globalThis.confirm('Weet je zeker dat je deze challenge wilt verwijderen?')) {
+      return;
+    }
     const supabase = getSupabase();
     await supabase.from('challenges').delete().eq('id', id);
-    fetchAdminData();
+    refreshAdminData();
   };
 
   const updateUser = async (userId: string) => {
     const supabase = getSupabase();
     await supabase
       .from('users')
-      .update({ 
+      .update({
         display_name: editDisplayName || null,
-        admin: editAdminStatus 
+        admin: editAdminStatus,
       })
       .eq('id', userId);
-    
+
     setEditingUser(null);
-    fetchAdminData();
+    refreshAdminData();
   };
 
   const deleteUser = async (userId: string) => {
-    if (!window.confirm('GEBRUIKER VOLLEDIG VERWIJDEREN?')) return;
+    if (!globalThis.confirm || !globalThis.confirm('GEBRUIKER VOLLEDIG VERWIJDEREN?')) {
+      return;
+    }
     const supabase = getSupabase();
-    
+
     await supabase.from('challenge_checkins').delete().eq('user_id', userId);
     await supabase.from('users').delete().eq('id', userId);
-    
-    fetchAdminData();
+
+    refreshAdminData();
   };
 
   if (loading) {
@@ -237,16 +267,24 @@ const AdminPage: React.FC = () => {
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-center">
           <div className="bg-white px-6 py-4 rounded-[2rem] border-2 border-gray-100 shadow-sm">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Challenges</p>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+              Challenges
+            </p>
             <p className="text-2xl font-black text-gray-800">{challenges.length}</p>
           </div>
           <div className="bg-white px-6 py-4 rounded-[2rem] border-2 border-gray-100 shadow-sm">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Gebruikers</p>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+              Gebruikers
+            </p>
             <p className="text-2xl font-black text-gray-800">{userSummaries.length}</p>
           </div>
           <div className="bg-white px-6 py-4 rounded-[2rem] border-2 border-gray-100 shadow-sm">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Checkins</p>
-            <p className="text-2xl font-black text-gray-800">{Object.values(stats).reduce((a, b) => a + b, 0)}</p>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+              Checkins
+            </p>
+            <p className="text-2xl font-black text-gray-800">
+              {Object.values(stats).reduce((a, b) => a + b, 0)}
+            </p>
           </div>
         </div>
       </header>
@@ -262,6 +300,18 @@ const AdminPage: React.FC = () => {
         >
           📋 Challenges
         </button>
+
+        <button
+          onClick={() => setActiveTab('community')}
+          className={`flex-1 py-4 px-6 font-black uppercase text-sm tracking-wider rounded-2xl transition-all ${
+            activeTab === 'community'
+              ? 'bg-gradient-to-r from-[#55CDFC] to-[#1C8ED9] text-white shadow-lg'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          🌍 Community Challenges
+        </button>
+
         <button
           onClick={() => setActiveTab('users')}
           className={`flex-1 py-4 px-6 font-black uppercase text-sm tracking-wider rounded-2xl transition-all ${
@@ -290,7 +340,10 @@ const AdminPage: React.FC = () => {
             )}
 
             {challenges.map((c: any) => (
-              <section key={c.id} className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-sm overflow-hidden">
+              <section
+                key={c.id}
+                className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-sm overflow-hidden"
+              >
                 <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#55CDFC] via-[#58CC02] to-[#FFC800] rounded-t-3xl" />
                 <div className="pt-4 px-5 md:px-6 pb-5 space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -302,9 +355,13 @@ const AdminPage: React.FC = () => {
                         {c.title}
                       </h3>
                     </div>
-                    <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${
-                      c.active ? 'bg-green-50 text-green-600 border-green-300' : 'bg-gray-100 text-gray-500 border-gray-300'
-                    }`}>
+                    <span
+                      className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${
+                        c.active
+                          ? 'bg-green-50 text-green-600 border-green-300'
+                          : 'bg-gray-100 text-gray-500 border-gray-300'
+                      }`}
+                    >
                       {c.active ? 'Actief' : 'Inactief'}
                     </span>
                   </div>
@@ -315,11 +372,18 @@ const AdminPage: React.FC = () => {
 
                   {c.options && c.options.length > 0 && (
                     <div className="space-y-2">
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Opties:</p>
-                      {c.options.map((opt: ChallengeOption, idx: number) => (
-                        <div key={idx} className="bg-gray-50 px-4 py-3 rounded-xl border border-gray-200">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                        Opties:
+                      </p>
+                      {c.options.map((opt: ChallengeOption) => (
+                        <div
+                          key={`${c.id}-${opt.label}-${opt.description}`}
+                          className="bg-gray-50 px-4 py-3 rounded-xl border border-gray-200"
+                        >
                           <p className="font-black text-sm text-gray-800">{opt.label}</p>
-                          <p className="text-xs text-gray-600 font-semibold">{opt.description}</p>
+                          <p className="text-xs text-gray-600 font-semibold">
+                            {opt.description}
+                          </p>
                         </div>
                       ))}
                     </div>
@@ -328,7 +392,9 @@ const AdminPage: React.FC = () => {
                   <div className="flex flex-wrap items-center gap-3 text-[11px] font-black text-gray-500">
                     <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-2xl border border-gray-100">
                       <span className="text-green-500 text-lg font-bold">✓</span>
-                      <span className="uppercase tracking-tighter">{stats[c.id] || 0} gebruikers voltooid</span>
+                      <span className="uppercase tracking-tighter">
+                        {stats[c.id] || 0} gebruikers voltooid
+                      </span>
                     </div>
                     {c.start_date && (
                       <span className="bg-gray-50 px-3 py-1.5 rounded-2xl border border-gray-100 uppercase tracking-widest">
@@ -344,13 +410,18 @@ const AdminPage: React.FC = () => {
 
                   <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-gray-100">
                     {c.video_url && (
-                      <a href={c.video_url} target="_blank" rel="noreferrer" className="text-[11px] font-black uppercase tracking-widest text-[#55CDFC] hover:text-[#1C8ED9]">
+                      <a
+                        href={c.video_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] font-black uppercase tracking-widest text-[#55CDFC] hover:text-[#1C8ED9]"
+                      >
                         ▶ Video bekijken
                       </a>
                     )}
                     <div className="flex items-center gap-2 ml-auto">
-                      <button 
-                        onClick={() => toggleActive(c.id, c.active)} 
+                      <button
+                        onClick={() => toggleActive(c.id, c.active)}
                         className={`px-6 py-2 rounded-2xl font-black uppercase text-[10px] border-b-[4px] transition-all ${
                           c.active
                             ? 'bg-[#58CC02] border-[#46A302] text-white hover:bg-[#46A302]'
@@ -359,8 +430,8 @@ const AdminPage: React.FC = () => {
                       >
                         {c.active ? 'Zet op pauze' : 'Zet actief'}
                       </button>
-                      <button 
-                        onClick={() => deleteChallenge(c.id)} 
+                      <button
+                        onClick={() => deleteChallenge(c.id)}
                         className="px-4 py-2 rounded-2xl border-2 border-red-100 bg-red-50 text-red-400 hover:text-red-600 hover:border-red-200 text-sm"
                       >
                         🗑️
@@ -386,10 +457,14 @@ const AdminPage: React.FC = () => {
 
               <form onSubmit={handleAddChallenge} className="space-y-5">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-[#55CDFC] uppercase ml-1 tracking-widest">
+                  <label
+                    htmlFor="challenge-title"
+                    className="text-[10px] font-black text-[#55CDFC] uppercase ml-1 tracking-widest"
+                  >
                     Titel van de uitdaging
                   </label>
                   <input
+                    id="challenge-title"
                     type="text"
                     placeholder="Bv. Squat To The Max"
                     className="w-full bg-white border-2 border-[#D0ECFF] rounded-2xl px-4 py-3 text-sm md:text-base font-bold text-gray-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] focus:outline-none focus:border-[#55CDFC]"
@@ -401,10 +476,14 @@ const AdminPage: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-[#55CDFC] uppercase ml-1 tracking-widest">
+                    <label
+                      htmlFor="challenge-start-date"
+                      className="text-[10px] font-black text-[#55CDFC] uppercase ml-1 tracking-widest"
+                    >
                       Startdatum
                     </label>
                     <input
+                      id="challenge-start-date"
                       type="date"
                       className="w-full bg-white border-2 border-[#D0ECFF] rounded-2xl px-4 py-3 text-sm font-bold text-gray-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] focus:outline-none focus:border-[#55CDFC]"
                       value={startDate}
@@ -413,10 +492,14 @@ const AdminPage: React.FC = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-[#55CDFC] uppercase ml-1 tracking-widest">
+                    <label
+                      htmlFor="challenge-deadline-date"
+                      className="text-[10px] font-black text-[#55CDFC] uppercase ml-1 tracking-widest"
+                    >
                       Deadline
                     </label>
                     <input
+                      id="challenge-deadline-date"
                       type="date"
                       className="w-full bg-white border-2 border-[#D0ECFF] rounded-2xl px-4 py-3 text-sm font-bold text-gray-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] focus:outline-none focus:border-[#55CDFC]"
                       value={deadlineDate}
@@ -426,10 +509,14 @@ const AdminPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-[#55CDFC] uppercase ml-1 tracking-widest">
+                  <label
+                    htmlFor="challenge-video-url"
+                    className="text-[10px] font-black text-[#55CDFC] uppercase ml-1 tracking-widest"
+                  >
                     Video URL
                   </label>
                   <input
+                    id="challenge-video-url"
                     type="text"
                     placeholder="YouTube/Vimeo"
                     className="w-full bg-white border-2 border-[#D0ECFF] rounded-2xl px-4 py-3 text-sm font-bold text-gray-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] focus:outline-none focus:border-[#55CDFC]"
@@ -439,10 +526,14 @@ const AdminPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-[#55CDFC] uppercase ml-1 tracking-widest">
+                  <label
+                    htmlFor="challenge-description"
+                    className="text-[10px] font-black text-[#55CDFC] uppercase ml-1 tracking-widest"
+                  >
                     Beschrijving & Regels
                   </label>
                   <textarea
+                    id="challenge-description"
                     placeholder="Wat moeten de atleten precies doen?"
                     className="w-full bg-white border-2 border-[#D0ECFF] rounded-2xl px-4 py-3 text-sm font-bold text-gray-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] focus:outline-none focus:border-[#55CDFC] resize-none"
                     rows={4}
@@ -468,36 +559,62 @@ const AdminPage: React.FC = () => {
                     )}
                   </div>
 
-                  {options.map((option, index) => (
-                    <div key={index} className="bg-white border-2 border-[#D0ECFF] rounded-2xl p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-black text-gray-600">Optie {index + 1}</span>
-                        {options.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeOption(index)}
-                            className="text-red-400 hover:text-red-600 text-sm"
+                  {options.map((option, index) => {
+                    const baseId = `challenge-option-${index}`;
+                    return (
+                      <div
+                        key={`${baseId}-${option.label}-${option.description}`}
+                        className="bg-white border-2 border-[#D0ECFF] rounded-2xl p-4 space-y-3"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-gray-600">
+                            Optie {index + 1}
+                          </span>
+                          {options.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeOption(index)}
+                              className="text-red-400 hover:text-red-600 text-sm"
+                            >
+                              🗑️
+                            </button>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <label
+                            htmlFor={`${baseId}-label`}
+                            className="text-[10px] font-black text-[#55CDFC] uppercase tracking-widest"
                           >
-                            🗑️
-                          </button>
-                        )}
+                            Naam
+                          </label>
+                          <input
+                            id={`${baseId}-label`}
+                            type="text"
+                            placeholder="Naam (bv. Optie 1, Beginners, etc.)"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 focus:outline-none focus:border-[#55CDFC]"
+                            value={option.label}
+                            onChange={(e) => updateOption(index, 'label', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label
+                            htmlFor={`${baseId}-description`}
+                            className="text-[10px] font-black text-[#55CDFC] uppercase tracking-widest"
+                          >
+                            Beschrijving
+                          </label>
+                          <input
+                            id={`${baseId}-description`}
+                            type="text"
+                            placeholder="Beschrijving (bv. 3x 10 pushups)"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 focus:outline-none focus:border-[#55CDFC]"
+                            value={option.description}
+                            onChange={(e) => updateOption(index, 'description', e.target.value)}
+                          />
+                        </div>
                       </div>
-                      <input
-                        type="text"
-                        placeholder="Naam (bv. Optie 1, Beginners, etc.)"
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 focus:outline-none focus:border-[#55CDFC]"
-                        value={option.label}
-                        onChange={(e) => updateOption(index, 'label', e.target.value)}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Beschrijving (bv. 3x 10 pushups)"
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-gray-700 focus:outline-none focus:border-[#55CDFC]"
-                        value={option.description}
-                        onChange={(e) => updateOption(index, 'description', e.target.value)}
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <button
@@ -511,6 +628,231 @@ const AdminPage: React.FC = () => {
           </aside>
         </div>
       )}
+
+            {activeTab === 'community' && (
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-8">
+          {/* Bestaande community challenges */}
+          <div className="space-y-5">
+            <h2 className="font-black text-gray-800 uppercase tracking-widest text-xs flex items-center gap-3 px-1">
+              <span className="text-xl">🌍</span> Bestaande Community Challenges
+            </h2>
+
+            {communityChallenges.length === 0 && (
+              <div className="bg-white p-10 text-center border-dashed border-2 border-gray-200 rounded-3xl">
+                <p className="font-black text-gray-400 uppercase text-xs tracking-widest">
+                  Nog geen community challenges aangemaakt.
+                </p>
+              </div>
+            )}
+
+            {communityChallenges.map((c) => (
+              <section
+                key={c.id}
+                className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-sm overflow-hidden"
+              >
+                {/* top gradient bar like normal challenges */}
+                <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#55CDFC] via-[#58CC02] to-[#FFC800] rounded-t-3xl" />
+
+                <div className="pt-4 px-5 md:px-6 pb-5 space-y-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="bg-blue-50 text-[#55CDFC] text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider border border-blue-100">
+                          Community
+                        </span>
+                        <span
+                          className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${
+                            c.active
+                              ? 'bg-green-50 text-green-600 border-green-300'
+                              : 'bg-gray-100 text-gray-500 border-gray-300'
+                          }`}
+                        >
+                          {c.active ? 'Actief' : 'Inactief'}
+                        </span>
+                      </div>
+
+                      <h3 className="font-black text-lg md:text-xl text-gray-800 tracking-tight">
+                        {c.title}
+                      </h3>
+                    </div>
+
+                    {/* edit / pause / delete buttons aligned like challenge footer */}
+                    <div className="flex items-center gap-2 ml-auto">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingCommunityId(c.id);
+                          setCommunityTitle(c.title);
+                          setCommunityDescription(c.description || '');
+                          setCommunityTarget(c.target_count);
+                        }}
+                        className="px-4 py-2 rounded-2xl border-2 border-blue-100 bg-blue-50 text-blue-500 hover:text-blue-700 hover:border-blue-200 text-xs font-black uppercase tracking-wider"
+                      >
+                        ✏️ Edit
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const supabase = getSupabase();
+                          await supabase
+                            .from('community_challenges')
+                            .update({ active: !c.active })
+                            .eq('id', c.id);
+                          refreshAdminData();
+                        }}
+                        className={`px-6 py-2 rounded-2xl font-black uppercase text-[10px] border-b-[4px] transition-all ${
+                          c.active
+                            ? 'bg-[#58CC02] border-[#46A302] text-white hover:bg-[#46A302]'
+                            : 'bg-gray-100 border-gray-300 text-gray-500 hover:bg-gray-200'
+                        }`}
+                      >
+                        {c.active ? 'Zet op pauze' : 'Zet actief'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (
+                            !globalThis.confirm ||
+                            !globalThis.confirm('Verwijderen?')
+                          ) {
+                            return;
+                          }
+                          const supabase = getSupabase();
+                          await supabase
+                            .from('community_challenges')
+                            .delete()
+                            .eq('id', c.id);
+                          refreshAdminData();
+                        }}
+                        className="px-4 py-2 rounded-2xl border-2 border-red-100 bg-red-50 text-red-400 hover:text-red-600 hover:border-red-200 text-sm"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+
+                  {c.description && (
+                    <p className="text-gray-500 font-bold text-sm leading-relaxed italic">
+                      "{c.description}"
+                    </p>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-3 text-[11px] font-black text-gray-500">
+                    <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-2xl border border-gray-100">
+                      <span className="text-[#55CDFC] text-lg font-bold">🎯</span>
+                      <span className="uppercase tracking-tighter">
+                        Target: {c.target_count}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            ))}
+          </div>
+
+          {/* Nieuwe / bewerk community challenge – same look as “Nieuwe Challenge” */}
+          <aside className="space-y-6 lg:space-y-8">
+            <section className="bg-[#F1FBFF] rounded-3xl border-2 border-[#55CDFC] p-7 md:p-8 shadow-sm">
+              <div className="text-center space-y-1 mb-6">
+                <span className="text-3xl">🆕</span>
+                <h2 className="font-black text-[#55CDFC] uppercase tracking-widest text-lg md:text-xl">
+                  {editingCommunityId
+                    ? 'Bewerk Community Challenge'
+                    : 'Nieuwe Community Challenge'}
+                </h2>
+                <p className="text-[10px] font-bold text-[#55CDFC]/70 uppercase tracking-widest">
+                  {editingCommunityId
+                    ? 'Pas een bestaande community challenge aan'
+                    : 'Creëer een nieuwe community uitdaging'}
+                </p>
+              </div>
+
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const supabase = getSupabase();
+
+                  await supabase.from('community_challenges').upsert({
+                    id: editingCommunityId ?? undefined,
+                    title: communityTitle,
+                    description: communityDescription,
+                    target_count: communityTarget,
+                    active: true,
+                  });
+
+                  setEditingCommunityId(null);
+                  setCommunityTitle('');
+                  setCommunityDescription('');
+                  setCommunityTarget(100);
+                  refreshAdminData();
+                }}
+                className="space-y-5"
+              >
+                <div className="space-y-2">
+                  <label
+                    htmlFor="community-title"
+                    className="text-[10px] font-black text-[#55CDFC] uppercase ml-1 tracking-widest"
+                  >
+                    Titel
+                  </label>
+                  <input
+                    id="community-title"
+                    type="text"
+                    placeholder="Titel"
+                    className="w-full bg-white border-2 border-[#D0ECFF] rounded-2xl px-4 py-3 text-sm md:text-base font-bold text-gray-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] focus:outline-none focus:border-[#55CDFC]"
+                    value={communityTitle}
+                    onChange={(e) => setCommunityTitle(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    htmlFor="community-description"
+                    className="text-[10px] font-black text-[#55CDFC] uppercase ml-1 tracking-widest"
+                  >
+                    Beschrijving
+                  </label>
+                  <textarea
+                    id="community-description"
+                    placeholder="Beschrijving"
+                    className="w-full bg-white border-2 border-[#D0ECFF] rounded-2xl px-4 py-3 text-sm font-bold text-gray-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] focus:outline-none focus:border-[#55CDFC] resize-none"
+                    rows={4}
+                    value={communityDescription}
+                    onChange={(e) => setCommunityDescription(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    htmlFor="community-target"
+                    className="text-[10px] font-black text-[#55CDFC] uppercase ml-1 tracking-widest"
+                  >
+                    Doel (target count)
+                  </label>
+                  <input
+                    id="community-target"
+                    type="number"
+                    className="w-full bg-white border-2 border-[#D0ECFF] rounded-2xl px-4 py-3 text-sm font-bold text-gray-700 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] focus:outline-none focus:border-[#55CDFC]"
+                    value={communityTarget}
+                    onChange={(e) => setCommunityTarget(Number(e.target.value))}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full mt-2 py-4 rounded-3xl font-black uppercase tracking-[0.25em] text-xs md:text-sm text-white bg-[#55CDFC] border-b-[5px] border-[#1C8ED9] shadow-lg hover:bg-[#1C8ED9] active:translate-y-[2px] active:border-b-[3px] transition-all"
+                >
+                  Opslaan
+                </button>
+              </form>
+            </section>
+          </aside>
+        </div>
+      )}
+
 
       {activeTab === 'users' && (
         <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-8">
@@ -527,14 +869,21 @@ const AdminPage: React.FC = () => {
               </div>
             ) : (
               userSummaries.map((user) => (
-                <section key={user.user_uuid} className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-sm overflow-hidden">
+                <section
+                  key={user.user_uuid}
+                  className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-sm overflow-hidden"
+                >
                   <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-orange-400 via-yellow-400 to-pink-400 rounded-t-3xl" />
                   <div className="pt-4 px-5 md:px-6 pb-5 space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center overflow-hidden">
                           {user.avatar_url ? (
-                            <img src={user.avatar_url} alt="avatar" className="w-full h-full object-cover" />
+                            <img
+                              src={user.avatar_url}
+                              alt="avatar"
+                              className="w-full h-full object-cover"
+                            />
                           ) : (
                             <span className="text-xl font-black text-gray-500">
                               {user.display_name?.[0]?.toUpperCase() || '👤'}
@@ -542,8 +891,12 @@ const AdminPage: React.FC = () => {
                           )}
                         </div>
                         <div>
-                          <h3 className="font-black text-lg text-gray-800">{user.display_name || 'Geen naam'}</h3>
-                          <p className="text-[11px] font-bold text-gray-500">Aangemeld: {user.joined_date}</p>
+                          <h3 className="font-black text-lg text-gray-800">
+                            {user.display_name || 'Geen naam'}
+                          </h3>
+                          <p className="text-[11px] font-bold text-gray-500">
+                            Aangemeld: {user.joined_date}
+                          </p>
                         </div>
                       </div>
 
@@ -561,46 +914,70 @@ const AdminPage: React.FC = () => {
 
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-[11px] text-gray-600">
                       <div className="bg-gray-50 px-4 py-3 rounded-xl border">
-                        <div className="font-black text-gray-500 text-xs uppercase tracking-wider">Punten</div>
-                        <div className="font-black text-xl text-gray-800">{user.total_points || 0}</div>
+                        <div className="font-black text-gray-500 text-xs uppercase tracking-wider">
+                          Punten
+                        </div>
+                        <div className="font-black text-xl text-gray-800">
+                          {user.total_points || 0}
+                        </div>
                       </div>
                       <div className="bg-gray-50 px-4 py-3 rounded-xl border">
-                        <div className="font-black text-gray-500 text-xs uppercase tracking-wider">Laatste</div>
-                        <div className="font-bold text-sm truncate">{user.latest_challenge || 'Nog geen'}</div>
+                        <div className="font-black text-gray-500 text-xs uppercase tracking-wider">
+                          Laatste
+                        </div>
+                        <div className="font-bold text-sm truncate">
+                          {user.latest_challenge || 'Nog geen'}
+                        </div>
                       </div>
                       <div className="bg-gray-50 px-4 py-3 rounded-xl border">
-                        <div className="font-black text-gray-500 text-xs uppercase tracking-wider">Status</div>
-                        <div className="font-black text-sm">{user.is_admin ? 'Admin' : 'Gebruiker'}</div>
+                        <div className="font-black text-gray-500 text-xs uppercase tracking-wider">
+                          Status
+                        </div>
+                        <div className="font-black text-sm">
+                          {user.is_admin ? 'Admin' : 'Gebruiker'}
+                        </div>
                       </div>
                     </div>
 
                     <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-100">
                       {editingUser === user.user_uuid ? (
                         <div className="flex items-center gap-2 flex-1 flex-wrap">
-                          <input
-                            type="text"
-                            placeholder="Nieuwe naam"
-                            className="flex-1 min-w-[150px] px-4 py-2 border-2 border-gray-200 rounded-xl text-sm font-bold focus:border-[#55CDFC] focus:outline-none"
-                            value={editDisplayName}
-                            onChange={(e) => setEditDisplayName(e.target.value)}
-                          />
+                          <div className="flex-1 min-w-[150px] space-y-1">
+                            <label
+                              htmlFor={`edit-display-name-${user.user_uuid}`}
+                              className="text-[10px] font-black uppercase tracking-widest text-gray-500"
+                            >
+                              Nieuwe naam
+                            </label>
+                            <input
+                              id={`edit-display-name-${user.user_uuid}`}
+                              type="text"
+                              placeholder="Nieuwe naam"
+                              className="w-full px-4 py-2 border-2 border-gray-200 rounded-xl text-sm font-bold focus:border-[#55CDFC] focus:outline-none"
+                              value={editDisplayName}
+                              onChange={(e) => setEditDisplayName(e.target.value)}
+                            />
+                          </div>
                           <label className="flex items-center gap-2 text-sm font-bold">
                             <input
+                              id={`edit-admin-${user.user_uuid}`}
                               type="checkbox"
                               checked={editAdminStatus}
                               onChange={(e) => setEditAdminStatus(e.target.checked)}
                               className="w-4 h-4 text-[#55CDFC]"
                             />
-                            Admin
+                            <span>Admin</span>
                           </label>
                           <div className="flex gap-1">
                             <button
+                              type="button"
                               onClick={() => updateUser(user.user_uuid)}
                               className="px-4 py-2 bg-[#55CDFC] text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-[#1C8ED9]"
                             >
                               ✅ Opslaan
                             </button>
                             <button
+                              type="button"
                               onClick={() => setEditingUser(null)}
                               className="px-4 py-2 bg-gray-200 text-gray-700 rounded-xl text-xs font-black uppercase tracking-wider hover:bg-gray-300"
                             >
@@ -611,6 +988,7 @@ const AdminPage: React.FC = () => {
                       ) : (
                         <div className="flex items-center gap-2 ml-auto">
                           <button
+                            type="button"
                             onClick={() => {
                               setEditingUser(user.user_uuid);
                               setEditDisplayName(user.display_name || '');
@@ -621,6 +999,7 @@ const AdminPage: React.FC = () => {
                             ✏️ Edit
                           </button>
                           <button
+                            type="button"
                             onClick={() => deleteUser(user.user_uuid)}
                             className="px-4 py-2 bg-red-500 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-red-600"
                           >
@@ -642,12 +1021,14 @@ const AdminPage: React.FC = () => {
               <div className="space-y-4 text-sm">
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="font-bold text-gray-600">Totaal gebruikers</span>
-                  <span className="font-black text-2xl text-gray-800">{userSummaries.length}</span>
+                  <span className="font-black text-2xl text-gray-800">
+                    {userSummaries.length}
+                  </span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-gray-100">
                   <span className="font-bold text-gray-600">Admins</span>
                   <span className="font-black text-[#55CDFC] text-xl">
-                    {userSummaries.filter(u => u.is_admin).length}
+                    {userSummaries.filter((u) => u.is_admin).length}
                   </span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-gray-100">

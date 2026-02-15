@@ -24,6 +24,10 @@ const ChallengesPage: React.FC = () => {
   const [deleting, setDeleting] = useState<Record<number, boolean>>({});
   const [completedIds, setCompletedIds] = useState<number[]>([]); 
   const [lifetimeCount, setLifetimeCount] = useState(0);
+  const [communityChallenge, setCommunityChallenge] = useState<any>(null);
+  const [communityTotal, setCommunityTotal] = useState(0);
+  const [myCommunityCount, setMyCommunityCount] = useState(0);
+
 
     const fetchData = async () => {
     setLoading(true);
@@ -74,6 +78,34 @@ const ChallengesPage: React.FC = () => {
       const lifetime = await getLifetimeProgress();
       setLifetimeCount(lifetime);
 
+      // Fetch active community challenge
+      const { data: challenge } = await supabase
+        .from('community_challenges')
+        .select('*')
+        .eq('active', true)
+        .maybeSingle();
+
+      setCommunityChallenge(challenge);
+
+      if (challenge) {
+        // Total community progress
+        const { count: total } = await supabase
+          .from('community_challenge_contributions')
+          .select('*', { count: 'exact', head: true })
+          .eq('community_challenge_id', challenge.id);
+
+        setCommunityTotal(total ?? 0);
+
+        // My contribution count
+        const { count: mine } = await supabase
+          .from('community_challenge_contributions')
+          .select('*', { count: 'exact', head: true })
+          .eq('community_challenge_id', challenge.id)
+          .eq('user_id', user.id);
+
+        setMyCommunityCount(mine ?? 0);
+      }
+
       const challengesWithData: ChallengeWithData[] = (activeChallenges || []).map((challenge: any) => ({
         ...challenge,
         checkins: completed.includes(challenge.id)
@@ -122,6 +154,25 @@ const ChallengesPage: React.FC = () => {
 
     try {
       await completeChallenge(challenge.id, level);
+
+      /* =========================
+        Community challenge contribution
+      ========================= */
+
+      if (communityChallenge) {
+        const supabase = getSupabase();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (user) {
+          await supabase
+            .from('community_challenge_contributions')
+            .insert({
+              community_challenge_id: communityChallenge.id,
+              user_id: user.id,
+            });
+        }
+      }
+
 
       setSuccessMessage(`✅ Challenge "${challenge.title}" voltooid!`);
       setTimeout(() => setSuccessMessage(null), 4000);
@@ -688,6 +739,44 @@ const ChallengesPage: React.FC = () => {
               </div>
             </div>
           </section>
+          {communityChallenge && (
+            <section className="bg-gradient-to-br from-[#55CDFC] to-[#3cb3df] rounded-3xl p-8 text-white shadow-xl">
+              <p className="text-[10px] font-black uppercase tracking-widest opacity-80">
+                Community Challenge
+              </p>
+
+              <h3 className="mt-2 text-2xl font-black">
+                {communityChallenge.title}
+              </h3>
+
+              <div className="mt-6 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-bold opacity-80">
+                    Community voortgang
+                  </p>
+                  <p className="text-3xl font-black">
+                    {communityTotal} / {communityChallenge.target_count}
+                  </p>
+                </div>
+
+                <div className="text-right">
+                  <p className="text-sm font-bold opacity-80">
+                    Jouw bijdrage
+                  </p>
+                  <p className="text-3xl font-black">
+                    {myCommunityCount}
+                  </p>
+                </div>
+              </div>
+
+              {communityTotal >= communityChallenge.target_count && (
+                <p className="mt-4 text-xs font-black uppercase tracking-widest">
+                  🎉 Badge verdiend!
+                </p>
+              )}
+            </section>
+          )}
+
 
         </aside>
       </div>
