@@ -166,7 +166,7 @@ const ProfilePage: React.FC = () => {
         <button
           type="button"
           onClick={toggleEdit}
-          className="absolute top-4 right-4 text-xs font-black uppercase tracking-[0.18em] px-3 py-2 rounded-2xl border-2 border-gray-200 text-gray-600 hover:bg-gray-100"
+          className="absolute top-0 right-4 text-xs font-black uppercase tracking-[0.18em] px-3 py-2 rounded-2xl border-2 border-gray-200 text-gray-600 hover:bg-gray-100"
         >
           {isEditing ? 'Annuleren' : 'Profiel wijzigen'}
         </button>
