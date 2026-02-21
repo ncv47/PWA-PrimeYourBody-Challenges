@@ -17,8 +17,6 @@ import ChallengesPage from './pages/ChallengesPage.tsx';
 import CommunityPage from './pages/CommunityPage.tsx';
 import ProfilePage from './pages/ProfilePage.tsx';
 import AdminPage from './pages/AdminPage.tsx';
-
-/* ✅ NEW: public user profile page */
 import UserProfilePage from './pages/UserProfilePage.tsx';
 
 const App: React.FC = () => {
@@ -33,6 +31,18 @@ const AppInner: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isPWA, setIsPWA] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(display-mode: standalone)');
+    const isStandalone = mediaQuery.matches || (navigator as any).standalone === true;
+    setIsPWA(isStandalone);
+
+    const handleChange = (e: MediaQueryListEvent) => setIsPWA(e.matches);
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
 
   const checkAdmin = async (userId: string) => {
     const supabase = getSupabase();
@@ -51,6 +61,10 @@ const AppInner: React.FC = () => {
       setSession(session);
       if (session?.user) checkAdmin(session.user.id);
       setLoading(false);
+
+      if (isPWA && !session) {
+        navigate('/login_secret', { replace: true });
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -62,7 +76,7 @@ const AppInner: React.FC = () => {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [isPWA, navigate]);
 
   if (loading) {
     return (
@@ -87,19 +101,39 @@ const AppInner: React.FC = () => {
       >
         <div className="w-full max-w-[1400px] px-4 md:px-10 py-10">
           <Routes>
-            {/* Public routes */}
-            <Route path="/" element={<HomePage />} />
-            <Route path="/login" element={!session ? <LoginPage /> : <Navigate to="/challenges" />} />
+            <Route 
+              path="/" 
+              element={
+                isPWA && !session 
+                  ? <Navigate to="/login_secret" replace /> 
+                  : <HomePage />
+              } 
+            />
+            <Route 
+              path="/login_secret" 
+              element={!session ? <LoginPage /> : <Navigate to="/challenges" />} 
+            />
 
-            {/* Authenticated routes */}
-            <Route path="/challenges" element={session ? <ChallengesPage /> : <Navigate to="/login" />} />
-            <Route path="/community" element={session ? <CommunityPage /> : <Navigate to="/login" />} />
-            <Route path="/profile" element={session ? <ProfilePage /> : <Navigate to="/login" />} />
-
-            {/* ✅ NEW: view other users' profiles */}
-            <Route path="/user/:userId" element={session ? <UserProfilePage /> : <Navigate to="/login" />} />
-
-            <Route path="/admin" element={session && isAdmin ? <AdminPage /> : <Navigate to="/challenges" />} />
+            <Route 
+              path="/challenges" 
+              element={session ? <ChallengesPage /> : <Navigate to="/login_secret" />} 
+            />
+            <Route 
+              path="/community" 
+              element={session ? <CommunityPage /> : <Navigate to="/login_secret" />} 
+            />
+            <Route 
+              path="/profile" 
+              element={session ? <ProfilePage /> : <Navigate to="/login_secret" />} 
+            />
+            <Route 
+              path="/user/:userId" 
+              element={session ? <UserProfilePage /> : <Navigate to="/login_secret" />} 
+            />
+            <Route 
+              path="/admin" 
+              element={session && isAdmin ? <AdminPage /> : <Navigate to="/challenges" />} 
+            />
           </Routes>
         </div>
       </main>
@@ -115,7 +149,7 @@ const Sidebar: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
   const handleLogout = async () => {
     const supabase = getSupabase();
     await supabase.auth.signOut();
-    navigate('/login');
+    navigate('/login_secret');
   };
 
   return (
