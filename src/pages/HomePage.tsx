@@ -1,133 +1,46 @@
-import React, { useEffect, useState } from 'react';
-import { getSupabase } from '../lib/supabase.ts';
-import { Challenge, CheckIn } from '../types.ts';
-
-type ChallengeWithStatus = Challenge & {
-  checkins: CheckIn[];
-};
-
-const useNotifications = () => {
-  const [permission, setPermission] = useState<'granted' | 'denied' | 'default'>('default');
-
-  const requestPermission = async () => {
-    if (!('Notification' in window)) {
-      alert('Notifications niet ondersteund');
-      return;
-    }
-    try {
-      const perm = await Notification.requestPermission();
-      setPermission(perm as any);
-    } catch (err) {
-      console.error('Permission error:', err);
-    }
-  };
-
-  const showTestNotification = () => {
-    if (permission !== 'granted') {
-      alert('Eerst toestemming!');
-      return;
-    }
-    new Notification('🔔 Test Reminder!', {
-      body: 'Dit is een test notificatie!',
-      icon: '/favicon.ico',
-      badge: '/favicon.ico',
-      tag: 'reminder-test',
-    });
-  };
-
-  return { permission, requestPermission, showTestNotification };
-};
+import React from 'react';
+import Logo from '../assets/logo.jpg';
+import '../homepage.css'; // Import homepage-specific CSS
 
 const HomePage: React.FC = () => {
-  const [challenges, setChallenges] = useState<ChallengeWithStatus[]>([]);
-  const [selectedLevels, setSelectedLevels] = useState<Record<number, string>>({});
-  const [monthlyCount, setMonthlyCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const { permission, requestPermission, showTestNotification } = useNotifications();
-
-  const fetchHomeData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const supabase = getSupabase();
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        setChallenges([]);
-        setLoading(false);
-        return;
-      }
-
-      // Rest van je fetch logic...
-      const { data: activeChallenges } = await supabase
-        .from('challenges')
-        .select('*')
-        .eq('active', true)
-        .order('week', { ascending: false });
-
-      setChallenges(activeChallenges || []);
-      setLoading(false);
-    } catch (err: any) {
-      console.error('Fetch error:', err);
-      setError('Kon challenges niet laden');
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchHomeData();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-4 border-[#55CDFC]"></div>
-        <p className="font-black text-[#55CDFC] uppercase tracking-widest text-[10px]">
-          Loading Stage...
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-[1100px] mx-auto px-4 md:px-0 space-y-8">
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center">
-          <p className="text-red-800 font-bold">{error}</p>
-          <p className="text-sm text-red-600 mt-1">Check .env vars en restart</p>
-        </div>
-      )}
+    <div className="homepage-fullscreen flex flex-col justify-center items-center text-white text-center overflow-hidden">
+      {/* Background gradient glow */}
+      <div className="absolute inset-0 bg-gradient-to-b from-black via-[#000814] to-black opacity-95" />
 
-      {/* Notification test buttons */}
-      <section className="bg-white rounded-3xl p-8 duo-card shadow-sm border-2 border-gray-100">
-        <h3 className="text-xl font-black text-gray-800 mb-4 uppercase tracking-tight flex items-center gap-3">
-          🔔 Reminder Test
-        </h3>
-        <div className="flex flex-wrap gap-4">
-          <button
-            onClick={requestPermission}
-            className="px-6 py-3 rounded-2xl bg-gray-200 text-gray-800 font-black uppercase tracking-wider text-sm hover:bg-gray-300"
-          >
-            {permission === 'default' && 'Vraag toestemming'}
-            {permission === 'granted' && '✅ Toestemming OK'}
-            {permission === 'denied' && '❌ Toestemming geweigerd'}
-          </button>
-          {permission === 'granted' && (
-            <button
-              onClick={showTestNotification}
-              className="px-8 py-3 rounded-2xl bg-[#55CDFC] text-white font-black uppercase tracking-wider text-sm hover:bg-[#3cb3df]"
-            >
-              🚀 Test Notificatie
-            </button>
-          )}
-        </div>
+      {/* Centered content */}
+      <section className="relative flex flex-col items-center justify-center w-full h-full px-6 md:px-0 py-8 md:py-0 gap-6">
+        <img
+          src={Logo}
+          alt="Prime Your Body Logo"
+          className="w-36 sm:w-48 md:w-60 lg:w-64 xl:w-72 drop-shadow-[0_0_50px_#55CDFC] animate-pulse-slow"
+        />
+
+        <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight">
+          <span className="text-[#55CDFC]">PRIME</span> <span>YOUR BODY</span>
+        </h1>
+
+        <p className="text-sm sm:text-base md:text-lg text-gray-300 max-w-lg leading-relaxed">
+          Voor toegang op de applicatie en weekelijkse challanges
+          Volg en DM ons op instagram
+        </p>
+
+        <a
+          href="https://www.instagram.com/prime_your_body_/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 sm:mt-6 bg-[#55CDFC] hover:bg-[#3cb3df] text-black font-extrabold
+                     py-3 sm:py-4 px-8 sm:px-12 rounded-full text-sm sm:text-lg uppercase
+                     tracking-widest transition-all duration-300 ease-out transform hover:scale-105
+                     shadow-[0_0_35px_#55CDFC]"
+        >
+          Join Us on Instagram 🚀
+        </a>
       </section>
 
-      {/* Rest van je challenges UI hier... (same as before) */}
-      <div>No challenges loaded yet</div>
+      <footer className="absolute bottom-4 text-[10px] sm:text-xs text-gray-600 uppercase tracking-widest">
+        © {new Date().getFullYear()} Prime Your Body
+      </footer>
     </div>
   );
 };
