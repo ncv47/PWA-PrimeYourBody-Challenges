@@ -475,7 +475,7 @@ const ChallengesPage: React.FC = () => {
                   <p className="text-xs sm:text-sm font-bold opacity-80">Community voortgang</p>
                   <p className="text-2xl sm:text-3xl font-black">{communityTotal} / {communityChallenge.target_count}</p>
                 </div>
-                <div className="text-right">
+                <div>
                   <p className="text-xs sm:text-sm font-bold opacity-80">Jouw bijdrage</p>
                   <p className="text-2xl sm:text-3xl font-black">{myCommunityCount}</p>
                 </div>
@@ -601,8 +601,7 @@ const ChallengesPage: React.FC = () => {
                               type="file"
                               accept="image/*,video/*"
                               onChange={(e) => handleProofSelect(challenge.id, e.target.files?.[0] || null)}
-                              className="block w-full text-xs border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-lg file:bg-[#55CDFC] file:text-white file:font-bold file:border-0 hover:border-[#55CDFC] transition-all"
-                            />
+                              className="block w-full h-12 px-4 pt-2 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 cursor-pointer text-sm placeholder-gray-500 flex items-center justify-start file:mr-4 file:py-1.5 file:pt-1 file:px-3 file:rounded-lg file:bg-[#55CDFC] file:text-white file:font-bold file:border-0 file:text-xs hover:border-[#55CDFC] transition-all"                            />
                             <div className="flex flex-col sm:flex-row gap-2 pt-2 sm:pt-0 w-full sm:w-auto">
                               <label className="flex items-center gap-1 px-4 py-2 bg-green-50 border-2 border-green-200 rounded-xl text-xs font-black cursor-pointer hover:bg-green-100 transition-colors">
                                 <input 
