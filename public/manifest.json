@@ -18,7 +18,7 @@
       "sizes": "512x512"
     }
   ],
-  "start_url": "/login",
+  "start_url": "/#/login_key", 
   "scope": "/",
   "display": "standalone",
   "theme_color": "#55CDFC",

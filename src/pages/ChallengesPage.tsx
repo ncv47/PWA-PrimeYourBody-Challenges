@@ -28,8 +28,7 @@ const ChallengesPage: React.FC = () => {
   const [communityTotal, setCommunityTotal] = useState(0);
   const [myCommunityCount, setMyCommunityCount] = useState(0);
 
-
-    const fetchData = async () => {
+  const fetchData = async () => {
     setLoading(true);
 
     try {
@@ -122,6 +121,7 @@ const ChallengesPage: React.FC = () => {
       }));
 
       setChallenges(challengesWithData);
+      setChallenges(challengesWithData);
     } catch (err: any) {
       console.error('fetchData error:', err);
       console.error('fetchData error JSON:', JSON.stringify(err, null, 2));
@@ -130,7 +130,6 @@ const ChallengesPage: React.FC = () => {
       setLoading(false);
     }
   };
-
 
   useEffect(() => {
     fetchData();
@@ -156,7 +155,7 @@ const ChallengesPage: React.FC = () => {
       await completeChallenge(challenge.id, level);
 
       /* =========================
-        Community challenge contribution
+         Community challenge contribution
       ========================= */
 
       if (communityChallenge) {
@@ -164,7 +163,7 @@ const ChallengesPage: React.FC = () => {
         const { data: { user } } = await supabase.auth.getUser();
 
         if (user) {
-          await supabase
+         await supabase
             .from('community_challenge_contributions')
             .insert({
               community_challenge_id: communityChallenge.id,
@@ -172,7 +171,6 @@ const ChallengesPage: React.FC = () => {
             });
         }
       }
-
 
       setSuccessMessage(`✅ Challenge "${challenge.title}" voltooid!`);
       setTimeout(() => setSuccessMessage(null), 4000);
@@ -192,7 +190,6 @@ const ChallengesPage: React.FC = () => {
       alert(`Done failed: ${msg}`);
     }
   };
-
 
   const handleCommentSubmit = async (challengeId: number) => {
     if (!confirming[challengeId]) {
@@ -280,7 +277,6 @@ const ChallengesPage: React.FC = () => {
     setCommentTexts(prev => ({ ...prev, [challengeId]: '' }));
     setProofFiles(prev => ({ ...prev, [challengeId]: null }));
   };
-
   const handleEditSubmit = async (challengeId: number) => {
     const supabase = getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
@@ -392,9 +388,9 @@ const ChallengesPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-[1100px] mx-auto px-4 md:px-0 space-y-8 pb-12">
+    <div className="min-h-screen w-full max-w-[1100px] mx-auto px-4 md:px-0 pb-12 overflow-x-hidden touch-pan-y space-y-8">
       {successMessage && (
-        <div className="fixed top-4 right-4 z-50 bg-gradient-to-r from-green-500 to-green-600 text-white p-6 rounded-3xl shadow-2xl max-w-sm animate-in slide-in-from-top-4 duration-300 border-2 border-green-400">
+        <div className="fixed top-4 right-4 z-50 bg-gradient-to-r from-green-500 to-green-600 text-white p-6 rounded-3xl shadow-2xl max-w-sm animate-in slide-in-from-top-4 duration-300 border-2 border-green-400 sm:max-w-md">
           <div className="flex items-center gap-3">
             <span className="text-2xl">
               {successMessage.includes('🗑️') ? '🗑️' : successMessage.includes('💾') ? '💾' : successMessage.includes('💬') ? '💬' : '✅'}
@@ -404,24 +400,98 @@ const ChallengesPage: React.FC = () => {
         </div>
       )}
 
-      <section className="bg-gradient-to-r from-[#E1F5FE] to-[#B3E5FC] rounded-3xl p-6 border-2 border-[#55CDFC]/50">
+      {/* Push Reminders */}
+      <section className="bg-gradient-to-r from-[#E1F5FE] to-[#B3E5FC] rounded-3xl p-4 sm:p-6 border-2 border-[#55CDFC]/50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-2xl">🔔</span>
+            <span className="text-xl sm:text-2xl">🔔</span>
             <div>
-              <h3 className="font-black text-lg text-gray-800">Push Reminders</h3>
-              <p className="text-sm text-gray-600 font-bold">✅ Actief</p>
+              <h3 className="font-black text-base sm:text-lg text-gray-800">Push Reminders</h3>
+              <p className="text-xs sm:text-sm text-gray-600 font-bold">✅ Actief</p>
             </div>
           </div>
         </div>
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-8">
-        <div className="space-y-6">
+      {/* MOBILE-FIRST RESPONSIVE GRID: Achievements on top, Challenges below */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-6 lg:gap-8 space-y-6 lg:space-y-0">
+        
+        {/* ACHIEVEMENTS - TOP ON MOBILE, RIGHT ON DESKTOP */}
+        <aside className="order-1 lg:order-2 space-y-4 lg:space-y-6">
+          {/* Monthly progress bar card */}
+          <section className="bg-white rounded-3xl border-2 border-gray-100 p-4 sm:p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+              <div>
+                <p className="text-[9px] sm:text-[10px] font-black text-gray-400 uppercase tracking-widest">Maand</p>
+                <p className="mt-1 text-lg sm:text-xl font-black text-gray-800">{monthlyCount}/4</p>
+              </div>
+              <span className="text-xl sm:text-2xl">📅</span>
+            </div>
+            <div className="h-2 sm:h-3 w-full bg-[#F3F4F6] rounded-full overflow-hidden">
+              <div className="h-full bg-[#55CDFC] transition-all duration-500" style={{ width: `${Math.min((monthlyCount / 4) * 100, 100)}%` }} />
+            </div>
+          </section>
+
+          {/* Monthly badge card */}
+          <section className="bg-[#F1FBFF] rounded-3xl border-2 border-[#55CDFC] p-4 sm:p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[9px] sm:text-[10px] font-black text-[#55CDFC] uppercase tracking-widest">Maand</p>
+                <p className="mt-1 text-xl sm:text-2xl font-black text-gray-800">{monthlyCount} / 4</p>
+              </div>
+              <div className="text-2xl sm:text-3xl">{monthlyCount >= 4 ? '🏅' : '🔥'}</div>
+            </div>
+            {monthlyCount >= 4 && (
+              <p className="mt-3 text-xs font-black text-green-600 uppercase tracking-widest">Badge verdiend</p>
+            )}
+          </section>
+
+          {/* Lifetime card */}
+          <section className="bg-white rounded-3xl border-2 border-gray-200 p-4 sm:p-6">
+            <p className="text-[9px] sm:text-[10px] font-black text-gray-500 uppercase tracking-widest">Lifetime</p>
+            <div className="mt-2 space-y-2 sm:space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-black text-gray-800 text-sm">10 Challenges</span>
+                <span className="text-xs sm:text-sm font-black">
+                  {Math.min(lifetimeCount, 10)} / 10{lifetimeCount >= 10 && ' 🥉'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-black text-gray-800 text-sm">100 Challenges</span>
+                <span className="text-xs sm:text-sm font-black">
+                  {Math.min(lifetimeCount, 100)} / 100{lifetimeCount >= 100 && ' 🏆'}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {/* Community challenge */}
+          {communityChallenge && (
+            <section className="bg-gradient-to-br from-[#55CDFC] to-[#3cb3df] rounded-3xl p-6 sm:p-8 text-white shadow-xl">
+              <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest opacity-80">Community Challenge</p>
+              <h3 className="mt-1 sm:mt-2 text-xl sm:text-2xl font-black">{communityChallenge.title}</h3>
+              <div className="mt-4 sm:mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-0">
+                <div>
+                  <p className="text-xs sm:text-sm font-bold opacity-80">Community voortgang</p>
+                  <p className="text-2xl sm:text-3xl font-black">{communityTotal} / {communityChallenge.target_count}</p>
+                </div>
+                <div>
+                  <p className="text-xs sm:text-sm font-bold opacity-80">Jouw bijdrage</p>
+                  <p className="text-2xl sm:text-3xl font-black">{myCommunityCount}</p>
+                </div>
+              </div>
+              {communityTotal >= communityChallenge.target_count && (
+                <p className="mt-4 text-xs font-black uppercase tracking-widest">🎉 Badge verdiend!</p>
+              )}
+            </section>
+          )}
+        </aside>
+
+        {/* CHALLENGES LIST - BELOW ON MOBILE, LEFT ON DESKTOP */}
+        <div className="order-2 lg:order-1 space-y-6">
           {challenges.length > 0 ? challenges.map(challenge => {
             const challengeDone = isDone(challenge);
-            
-            // Haal de opties op of gebruik de standaard als er niets is opgegeven
+
             const levelOptions = (challenge.options && challenge.options.length > 0)
               ? challenge.options
               : [
@@ -429,24 +499,24 @@ const ChallengesPage: React.FC = () => {
                   { label: 'Standard', description: 'De volledige challenge zoals bedoeld.' },
                   { label: 'Pro', description: 'Voor als je een extra uitdaging wilt!' }
                 ];
-            
+
             const currentSelectedLevel = selectedLevels[challenge.id];
             const currentOptionObj = levelOptions.find(o => o.label === currentSelectedLevel);
-            
+
             const comment = challenge.my_comments[0];
             const user = comment?.users?.[0] || { display_name: 'Jij', admin: false, avatar_url: null };
             const isEditing = editing[challenge.id];
 
             return (
-              <section key={challenge.id} className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-xl overflow-hidden">
+              <section key={challenge.id} className="relative rounded-3xl border-2 border-gray-200 bg-white shadow-xl overflow-hidden max-w-full">
                 <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#55CDFC] via-[#58CC02] to-[#FFC800] rounded-t-3xl" />
-                
-                <div className="pt-6 px-5 md:px-6 pb-6 space-y-4">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="bg-[#55CDFC] text-white font-black uppercase tracking-[0.2em] text-[9px] px-3 py-1 rounded-full">
+
+                <div className="pt-4 sm:pt-6 px-4 sm:px-5 md:px-6 pb-4 sm:pb-6 space-y-4">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <span className="bg-[#55CDFC] text-white font-black uppercase tracking-[0.2em] text-[8px] sm:text-[9px] px-2 sm:px-3 py-1 rounded-full">
                       Week {challenge.week}
                     </span>
-                    <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${
+                    <span className={`text-[8px] sm:text-[9px] font-black uppercase tracking-widest px-2 sm:px-3 py-1 rounded-full border ${
                       challengeDone ? 'bg-[#E1F5FE] text-[#55CDFC] border-[#55CDFC]' : 'bg-gray-100 text-gray-500 border-gray-200'
                     }`}>
                       {challengeDone ? '✓ Voltooid' : 'Nog niet geprobeerd'}
@@ -454,16 +524,16 @@ const ChallengesPage: React.FC = () => {
                   </div>
 
                   <div className="text-center space-y-1">
-                    <h2 className="text-xl md:text-2xl font-black text-gray-800 tracking-tight">{challenge.title}</h2>
-                    <p className="text-[#777777] font-bold text-sm md:text-base leading-relaxed max-w-lg mx-auto italic">
+                    <h2 className="text-lg sm:text-xl md:text-2xl font-black text-gray-800 tracking-tight">{challenge.title}</h2>
+                    <p className="text-[#777777] font-bold text-xs sm:text-sm md:text-base leading-relaxed max-w-lg mx-auto italic px-2">
                       "{challenge.description}"
                     </p>
                   </div>
 
                   {challenge.video_url && (
-                    <a href={challenge.video_url} target="_blank" rel="noreferrer" className="block rounded-2xl bg-gray-50 aspect-[16/10] relative flex items-center justify-center mx-auto max-w-[92%]">
-                      <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
-                        <span className="text-[#55CDFC] text-xl ml-1">▶</span>
+                    <a href={challenge.video_url} target="_blank" rel="noreferrer" className="block rounded-2xl bg-gray-50 aspect-[16/10] relative flex items-center justify-center mx-auto max-w-[95%] sm:max-w-[92%]">
+                      <div className="w-10 sm:w-12 h-10 sm:h-12 bg-white rounded-full flex items-center justify-center shadow-lg">
+                        <span className="text-[#55CDFC] text-lg sm:text-xl ml-0.5 sm:ml-1">▶</span>
                       </div>
                     </a>
                   )}
@@ -489,7 +559,7 @@ const ChallengesPage: React.FC = () => {
                           ))}
                         </div>
 
-                        {/* Dynamische beschrijving van het geselecteerde niveau */}
+                        {/* Selected level description */}
                         {currentOptionObj && (
                           <div className="px-5 py-4 bg-[#F1FBFF] rounded-2xl border-2 border-dashed border-[#55CDFC]/30 animate-in fade-in slide-in-from-top-2">
                             <p className="text-[10px] font-black text-[#55CDFC] uppercase tracking-widest mb-1 text-center">
@@ -526,13 +596,13 @@ const ChallengesPage: React.FC = () => {
                             onChange={(e) => setCommentTexts(prev => ({ ...prev, [challenge.id]: e.target.value }))}
                           />
                           <div className="flex flex-col sm:flex-row gap-3 items-end">
+                            {/* FIXED FILE INPUT - MOBILE FRIENDLY */}
                             <input
                               type="file"
                               accept="image/*,video/*"
                               onChange={(e) => handleProofSelect(challenge.id, e.target.files?.[0] || null)}
-                              className="flex-1 px-4 py-3 border-2 border-dashed border-gray-300 rounded-2xl bg-gray-50 text-sm file:mr-4 file:py-2 file:px-4 file:rounded-xl file:bg-[#55CDFC] file:text-white file:font-bold file:border-0 hover:border-[#55CDFC] transition-colors cursor-pointer"
-                            />
-                            <div className="flex gap-2 flex-wrap">
+                              className="block w-full h-12 px-4 pt-2 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 cursor-pointer text-sm placeholder-gray-500 flex items-center justify-start file:mr-4 file:py-1.5 file:pt-1 file:px-3 file:rounded-lg file:bg-[#55CDFC] file:text-white file:font-bold file:border-0 file:text-xs hover:border-[#55CDFC] transition-all"                            />
+                            <div className="flex flex-col sm:flex-row gap-2 pt-2 sm:pt-0 w-full sm:w-auto">
                               <label className="flex items-center gap-1 px-4 py-2 bg-green-50 border-2 border-green-200 rounded-xl text-xs font-black cursor-pointer hover:bg-green-100 transition-colors">
                                 <input 
                                   type="radio" 
@@ -676,109 +746,6 @@ const ChallengesPage: React.FC = () => {
             </div>
           )}
         </div>
-
-        <aside className="space-y-6 lg:space-y-8">
-          <section className="bg-white rounded-3xl border-2 border-gray-100 p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Maand</p>
-                <p className="mt-1 text-xl font-black text-gray-800">{monthlyCount}/4</p>
-              </div>
-              <span className="text-2xl">📅</span>
-            </div>
-            <div className="h-3 w-full bg-[#F3F4F6] rounded-full overflow-hidden">
-              <div className="h-full bg-[#55CDFC] transition-all duration-500" style={{ width: `${Math.min((monthlyCount / 4) * 100, 100)}%` }} />
-            </div>
-          </section>
-          <section className="bg-[#F1FBFF] rounded-3xl border-2 border-[#55CDFC] p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-black text-[#55CDFC] uppercase tracking-widest">
-                  Maand
-                </p>
-                <p className="mt-1 text-2xl font-black text-gray-800">
-                  {monthlyCount} / 4
-                </p>
-              </div>
-
-              <div className="text-3xl">
-                {monthlyCount >= 4 ? '🏅' : '🔥'}
-              </div>
-            </div>
-
-            {monthlyCount >= 4 && (
-              <p className="mt-3 text-xs font-black text-green-600 uppercase tracking-widest">
-                Badge verdiend
-              </p>
-            )}
-          </section>
-          <section className="bg-white rounded-3xl border-2 border-gray-200 p-6">
-            <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-              Lifetime
-            </p>
-
-            <div className="mt-2 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-black text-gray-800">
-                  10 Challenges
-                </span>
-                <span className="text-sm font-black">
-                  {Math.min(lifetimeCount, 10)} / 10
-                  {lifetimeCount >= 10 && ' 🥉'}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="font-black text-gray-800">
-                  100 Challenges
-                </span>
-                <span className="text-sm font-black">
-                  {Math.min(lifetimeCount, 100)} / 100
-                  {lifetimeCount >= 100 && ' 🏆'}
-                </span>
-              </div>
-            </div>
-          </section>
-          {communityChallenge && (
-            <section className="bg-gradient-to-br from-[#55CDFC] to-[#3cb3df] rounded-3xl p-8 text-white shadow-xl">
-              <p className="text-[10px] font-black uppercase tracking-widest opacity-80">
-                Community Challenge
-              </p>
-
-              <h3 className="mt-2 text-2xl font-black">
-                {communityChallenge.title}
-              </h3>
-
-              <div className="mt-6 flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-bold opacity-80">
-                    Community voortgang
-                  </p>
-                  <p className="text-3xl font-black">
-                    {communityTotal} / {communityChallenge.target_count}
-                  </p>
-                </div>
-
-                <div className="text-right">
-                  <p className="text-sm font-bold opacity-80">
-                    Jouw bijdrage
-                  </p>
-                  <p className="text-3xl font-black">
-                    {myCommunityCount}
-                  </p>
-                </div>
-              </div>
-
-              {communityTotal >= communityChallenge.target_count && (
-                <p className="mt-4 text-xs font-black uppercase tracking-widest">
-                  🎉 Badge verdiend!
-                </p>
-              )}
-            </section>
-          )}
-
-
-        </aside>
       </div>
     </div>
   );

@@ -209,7 +209,7 @@ const CommunityPage: React.FC = () => {
                           {user.display_name}
                         </h4>
                         {user.admin && (
-                          <span className="text-[11px] font-black bg-[#55CDFC] text-white px-3 py-1 rounded-full uppercase tracking-widest">
+                          <span className="text-[10px] sm:text-[11px] font-black bg-[#55CDFC] text-white px-2 sm:px-3 py-1 rounded-full uppercase tracking-widest text-left sm:inline-block w-fit">
                             COACH
                           </span>
                         )}

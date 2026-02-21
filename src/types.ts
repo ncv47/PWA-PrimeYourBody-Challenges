@@ -8,9 +8,10 @@ export interface User {
 
 export interface UserProfile {
   id: string;
-  display_name: string | null;
-  admin: boolean;
-  avatar_url?: string;
+  displayName: string | null;
+  avatarUrl?: string | null;
+  admin?: boolean;
+  createdAt?: string;
 }
 
 export interface Challenge {
@@ -78,4 +79,24 @@ export interface ChallengeComment {
 export interface ChallengeWithData extends Challenge {
   checkins: CheckIn[];
   my_comments: ChallengeComment[];
+}
+
+/** Basic site metadata */
+export interface SiteInfo {
+  name: string;              // e.g. "Prime Your Body"
+  description: string;       // Tagline or SEO description
+  logoUrl: string;           // Path to logo image
+  instagramUrl: string;      // Main Instagram link
+  launchYear: number;        // e.g. 2026
+}
+
+/** For featured campaign blocks or promos */
+export interface Campaign {
+  id: string;
+  title: string;
+  subtitle?: string;
+  imageUrl?: string;
+  ctaLabel?: string;         // e.g. "Join Us", "Learn More"
+  ctaUrl?: string;           // Target link
+  active: boolean;
 }
