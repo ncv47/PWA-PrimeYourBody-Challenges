@@ -1,6 +1,34 @@
 import React, { useEffect, useState } from 'react';
 import { getSupabase, completeChallenge, getMonthlyProgress, getMyCompletedChallengeIds, getLifetimeProgress } from '../lib/supabase.ts';
 import { Challenge, CheckIn, ChallengeComment } from '../types.ts';
+type PushPermissionState = NotificationPermission | 'unsupported' | null;
+
+
+// Add this:
+const isNotificationSupported =
+  typeof window !== 'undefined' &&
+  'Notification' in window;
+
+// Optional: wrapper so we can reuse later
+const requestNotificationPermission = async (): Promise<NotificationPermission | null> => {
+  if (!isNotificationSupported) {
+    alert('Notificaties worden niet ondersteund in deze browser.');
+    return null;
+  }
+
+  // If already decided, just return current state
+  if (Notification.permission === 'granted' || Notification.permission === 'denied') {
+    return Notification.permission;
+  }
+
+  try {
+    const permission = await Notification.requestPermission();
+    return permission;
+  } catch (e) {
+    console.error('Notification request failed', e);
+    return null;
+  }
+};
 
 // Interface uitbreiden voor de dynamische opties uit het admin panel
 type ChallengeWithData = Challenge & {
@@ -27,6 +55,11 @@ const ChallengesPage: React.FC = () => {
   const [communityChallenge, setCommunityChallenge] = useState<any>(null);
   const [communityTotal, setCommunityTotal] = useState(0);
   const [myCommunityCount, setMyCommunityCount] = useState(0);
+  const [pushPermission, setPushPermission] = useState<PushPermissionState>(() => {
+    if (!isNotificationSupported) return 'unsupported';
+    return Notification.permission;
+  });
+  const shouldShowPushBox = pushPermission !== 'granted';
 
   const fetchData = async () => {
     setLoading(true);
@@ -140,9 +173,36 @@ const ChallengesPage: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+  if (!isNotificationSupported) {
+    setPushPermission('unsupported');
+    return;
+  }
+
+    setPushPermission(Notification.permission);
+  }, []);
+
   const handleLevelSelect = (challengeId: number, level: string) => {
     setSelectedLevels(prev => ({ ...prev, [challengeId]: level }));
   };
+
+  const handleEnablePush = async () => {
+    if (!isNotificationSupported) {
+      setPushPermission('unsupported');
+      return;
+    }
+
+    // Als al toegestaan → niet opnieuw vragen
+    if (Notification.permission === 'granted') {
+      setPushPermission('granted');
+      return;
+    }
+
+    // Dit toont de native browser popup
+    const permission = await Notification.requestPermission();
+    setPushPermission(permission);
+  };
+
 
   const handleDone = async (challenge: ChallengeWithData) => {
     const level = selectedLevels[challenge.id];
@@ -401,17 +461,34 @@ const ChallengesPage: React.FC = () => {
       )}
 
       {/* Push Reminders */}
-      <section className="bg-gradient-to-r from-[#E1F5FE] to-[#B3E5FC] rounded-3xl p-4 sm:p-6 border-2 border-[#55CDFC]/50">
-        <div className="flex items-center justify-between">
+      {shouldShowPushBox && (
+        <section className="bg-gradient-to-r from-[#E1F5FE] to-[#B3E5FC] rounded-3xl p-4 sm:p-6 border-2 border-[#55CDFC]/50">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div className="flex items-center gap-3">
             <span className="text-xl sm:text-2xl">🔔</span>
             <div>
               <h3 className="font-black text-base sm:text-lg text-gray-800">Push Reminders</h3>
-              <p className="text-xs sm:text-sm text-gray-600 font-bold">✅ Actief</p>
+              <p className="text-xs sm:text-sm text-gray-600 font-bold">
+                {pushPermission === 'unsupported' && 'Dit device ondersteunt geen notificaties'}
+                {pushPermission === 'denied' && 'Notificaties geblokkeerd. Zet ze aan in je browser instellingen.'}
+                {(pushPermission === 'default' || pushPermission === null) &&
+                  'Zet notificaties aan om reminders te ontvangen'}
+              </p>
             </div>
           </div>
+
+          <div className="flex gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleEnablePush}
+              className="px-3 sm:px-4 py-2 rounded-2xl bg-white/80 border border-[#55CDFC] text-[#055a8c] text-xs sm:text-sm font-black uppercase tracking-[0.15em] hover:bg-white transition-all"
+            >
+              Notificaties aanzetten
+            </button>
+          </div>
         </div>
-      </section>
+        </section>
+      )}
 
       {/* MOBILE-FIRST RESPONSIVE GRID: Achievements on top, Challenges below */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-6 lg:gap-8 space-y-6 lg:space-y-0">
