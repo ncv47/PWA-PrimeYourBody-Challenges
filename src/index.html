@@ -1,12 +1,34 @@
-
 <!DOCTYPE html>
 <html lang="nl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- 🔥 BELANGRIJK: mobiele PWA viewport -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
     <title>Prime Your Body Challenges</title>
+
+    <!-- 🔔 PWA Manifest (VERPLICHT voor mobile push) -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- 📱 iOS PWA support (SUPER belangrijk voor iPhone) -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Prime Your Body" />
+
+    <!-- 🎨 Theme color (Chrome + Android install banner) -->
+    <meta name="theme-color" content="#55CDFC" />
+
+    <!-- 📲 App icon (MOET bestaan in /public) -->
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+
+    <!-- Fonts & Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <link
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+
     <style>
       :root {
         --prime-cyan: #55CDFC;
@@ -22,7 +44,6 @@
         margin: 0;
         padding: 0;
       }
-      /* Extra smooth rounding for all main containers */
       .duo-card {
         border: 2px solid var(--duo-gray);
         border-bottom-width: 6px;
@@ -30,7 +51,6 @@
         background: white;
         transition: transform 0.2s ease;
       }
-      /* Noticeable 3D Buttons */
       .duo-btn-primary {
         background-color: var(--prime-cyan);
         border: none;
@@ -71,7 +91,6 @@
         border: 2px solid var(--prime-cyan);
         color: var(--prime-cyan) !important;
       }
-      /* Custom Input Styling */
       .duo-input {
         background-color: #F7F7F7;
         border: 2px solid var(--duo-gray);
@@ -86,6 +105,8 @@
         background-color: white;
       }
     </style>
+
+    <!-- Importmap (unchanged) -->
     <script type="importmap">
     {
       "imports": {
@@ -97,7 +118,24 @@
       }
     }
     </script>
+
+    <!-- 🚀 Service Worker registratie (CRUCIAAL voor push op mobile) -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker
+            .register('/sw.js')
+            .then((reg) => {
+              console.log('Service Worker registered:', reg);
+            })
+            .catch((err) => {
+              console.error('SW registration failed:', err);
+            });
+        });
+      }
+    </script>
   </head>
+
   <body>
     <div id="root"></div>
   </body>

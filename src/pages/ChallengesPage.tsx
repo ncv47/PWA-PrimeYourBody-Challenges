@@ -192,6 +192,8 @@ const ChallengesPage: React.FC = () => {
       return;
     }
 
+      
+
     // Als al toegestaan → niet opnieuw vragen
     if (Notification.permission === 'granted') {
       setPushPermission('granted');
@@ -202,6 +204,36 @@ const ChallengesPage: React.FC = () => {
     const permission = await Notification.requestPermission();
     setPushPermission(permission);
   };
+
+  const handleTestNotification = async () => {
+      if (!isNotificationSupported) {
+        alert('Notificaties worden niet ondersteund op dit device.');
+        return;
+      }
+
+      if (Notification.permission !== 'granted') {
+        alert('Geef eerst notificatie toestemming!');
+        return;
+      }
+
+      try {
+        // Simpele local notification (werkt direct voor testen)
+        const notification = new Notification('Prime Your Body 💪', {
+          body: 'Dit is een test notificatie! Werkt perfect 🎉',
+          icon: '/icons/icon-192.png', // optioneel, mag ook weg
+          badge: '/icons/icon-192.png',
+          tag: 'test-notification-' + Date.now() 
+        });
+
+        notification.onclick = () => {
+          window.focus();
+          notification.close();
+        };
+      } catch (err) {
+        console.error('Test notification error:', err);
+        alert('Kon notificatie niet tonen (mogelijk iOS PWA vereiste).');
+      }
+   };    
 
 
   const handleDone = async (challenge: ChallengeWithData) => {
@@ -459,6 +491,16 @@ const ChallengesPage: React.FC = () => {
           </div>
         </div>
       )}
+      {/* 🧪 PERMANENTE TEST NOTIFICATIE BUTTON */}
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={handleTestNotification}
+            className="px-6 py-3 rounded-2xl bg-black text-white font-black uppercase tracking-widest text-xs shadow-lg hover:scale-105 transition-all"
+          >
+            🔔 TEST NOTIFICATIE (DEBUG)
+          </button>
+        </div>
 
       {/* Push Reminders */}
       {shouldShowPushBox && (
@@ -480,7 +522,7 @@ const ChallengesPage: React.FC = () => {
           <div className="flex gap-2 flex-wrap">
             <button
               type="button"
-              onClick={handleEnablePush}
+            onClick={handleEnablePush}
               className="px-3 sm:px-4 py-2 rounded-2xl bg-white/80 border border-[#55CDFC] text-[#055a8c] text-xs sm:text-sm font-black uppercase tracking-[0.15em] hover:bg-white transition-all"
             >
               Notificaties aanzetten
