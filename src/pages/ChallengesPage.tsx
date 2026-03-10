@@ -60,6 +60,7 @@ const ChallengesPage: React.FC = () => {
     return Notification.permission;
   });
   const shouldShowPushBox = pushPermission !== 'granted';
+  const [isPushing, setIsPushing] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -186,54 +187,77 @@ const ChallengesPage: React.FC = () => {
     setSelectedLevels(prev => ({ ...prev, [challengeId]: level }));
   };
 
-  const handleEnablePush = async () => {
-    if (!isNotificationSupported) {
-      setPushPermission('unsupported');
-      return;
+const handleEnablePush = async () => {
+  setIsPushing(true);
+
+  if (!isNotificationSupported) {
+    alert('Notificaties worden niet ondersteund op deze browser/device.');
+    setIsPushing(false);
+    return;
+  }
+
+  try {
+    // Check of we op een onveilige verbinding zitten (geen localhost en geen https)
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
+      alert('⚠️ Notificaties werken op mobiel alleen via HTTPS. Localhost IP werkt vaak niet.');
     }
 
-      
+    console.log("Huidige permissie:", Notification.permission);
 
-    // Als al toegestaan → niet opnieuw vragen
-    if (Notification.permission === 'granted') {
-      setPushPermission('granted');
-      return;
-    }
-
-    // Dit toont de native browser popup
+    // Vraag permissie aan
     const permission = await Notification.requestPermission();
+    console.log("Nieuwe permissie gekregen:", permission);
+    
     setPushPermission(permission);
-  };
 
-  const handleTestNotification = async () => {
-      if (!isNotificationSupported) {
-        alert('Notificaties worden niet ondersteund op dit device.');
-        return;
-      }
+    if (permission === 'denied') {
+      alert('Je hebt notificaties geweigerd. Reset dit in je browser instellingen (klik op het slotje naast de URL).');
+    } else if (permission === 'granted') {
+      if ('vibrate' in navigator) navigator.vibrate([50, 30, 50]);
+    }
+    
+  } catch (err) {
+    console.error("Permission request failed", err);
+    alert("Er ging iets mis bij het aanvragen: " + err);
+  } finally {
+    setTimeout(() => setIsPushing(false), 400);
+  }
+};
 
-      if (Notification.permission !== 'granted') {
-        alert('Geef eerst notificatie toestemming!');
-        return;
-      }
+const handleTestNotification = async () => {
+  if (Notification.permission !== 'granted') {
+    alert('Geef eerst toestemming via de knop hieronder!');
+    return;
+  }
 
-      try {
-        // Simpele local notification (werkt direct voor testen)
-        const notification = new Notification('Prime Your Body 💪', {
-          body: 'Dit is een test notificatie! Werkt perfect 🎉',
-          icon: '/icons/icon-192.png', // optioneel, mag ook weg
+  try {
+    // STAP A: Probeer via Service Worker (Best voor Android/PWA)
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg.showNotification) {
+        // We casten de opties naar 'any' om de TypeScript 'vibrate' error te negeren
+        const notificationOptions: any = {
+          body: 'Dit is een mobiele test notificatie! 🔥',
+          icon: '/icons/icon-192.png',
           badge: '/icons/icon-192.png',
-          tag: 'test-notification-' + Date.now() 
-        });
-
-        notification.onclick = () => {
-          window.focus();
-          notification.close();
+          vibrate: [100, 50, 100], // Werkt op Android
+          tag: 'test-notif'
         };
-      } catch (err) {
-        console.error('Test notification error:', err);
-        alert('Kon notificatie niet tonen (mogelijk iOS PWA vereiste).');
+        
+        await reg.showNotification('Prime Your Body 💪', notificationOptions);
+        return;
       }
-   };    
+    }
+
+    // STAP B: Fallback (Desktop/Simpele browsers)
+    new Notification('Prime Your Body 💪', {
+      body: 'Test notificatie (Browser Fallback) 🎉',
+    });
+  } catch (err) {
+    console.error('Test notification error:', err);
+    alert('Kon notificatie niet sturen.');
+  }
+};
 
 
   const handleDone = async (challenge: ChallengeWithData) => {
@@ -522,10 +546,16 @@ const ChallengesPage: React.FC = () => {
           <div className="flex gap-2 flex-wrap">
             <button
               type="button"
-            onClick={handleEnablePush}
-              className="px-3 sm:px-4 py-2 rounded-2xl bg-white/80 border border-[#55CDFC] text-[#055a8c] text-xs sm:text-sm font-black uppercase tracking-[0.15em] hover:bg-white transition-all"
+              onClick={handleEnablePush}
+              disabled={isPushing}
+              className={`
+                px-5 py-3 rounded-2xl font-black uppercase tracking-widest text-xs transition-all duration-150 active:scale-90
+                ${isPushing 
+                  ? 'bg-[#58CC02] text-white scale-95 shadow-inner' 
+                  : 'bg-white border-2 border-[#55CDFC] text-[#055a8c] hover:bg-[#E1F5FE]'}
+              `}
             >
-              Notificaties aanzetten
+              {isPushing ? 'Oproepen...' : 'Notificaties aanzetten'}
             </button>
           </div>
         </div>
