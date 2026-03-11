@@ -75,6 +75,27 @@
     const [notifUsers, setNotifUsers] = useState<string[]>([]);
     const [editingCommunityId, setEditingCommunityId] = useState<string | null>(null);
 
+    // Login Key
+    const [copied, setCopied] = useState(false);
+
+    // Generate monthly login key
+    const now = new Date();
+    const yearMonth = now.getFullYear() * 100 + (now.getMonth() + 1);
+    const loginKey = String((yearMonth * 12345) % 1000000).padStart(6, '0');
+
+    // Build full login URL
+    const loginUrl = `${window.location.origin}/#/login?key=${loginKey}`;
+
+    const copyLoginUrl = async () => {
+      try {
+        await navigator.clipboard.writeText(loginUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        alert("Kon link niet kopiëren");
+      }
+    };
+
     // Computed values voor performance
     const totalCheckins = useMemo(() => 
       Object.values(stats).reduce((sum, count) => sum + count, 0), [stats]
@@ -555,6 +576,36 @@ useEffect(() => {
             </div>
           </div>
         </header>
+        {/* 🔑 LOGIN LINK FOR CLIENTS */}
+        <div className="w-full mt-6 mb-8 bg-[#F1FBFF] border-2 border-[#55CDFC] rounded-3xl p-4 md:p-5 shadow-sm">
+          
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+            <p className="text-[10px] font-black text-[#55CDFC] uppercase tracking-widest">
+              Client Login Link
+            </p>
+
+            <button
+              onClick={copyLoginUrl}
+              className="px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider bg-[#55CDFC] text-white hover:bg-[#1C8ED9] transition-all"
+            >
+              {copied ? "✅ Gekopieerd" : "📋 Kopieer"}
+            </button>
+          </div>
+
+          <div className="relative">
+            <input
+              type="text"
+              value={loginUrl}
+              readOnly
+              className="w-full bg-white border-2 border-[#D0ECFF] rounded-2xl px-3 md:px-4 py-2.5 md:py-3 font-bold text-xs md:text-sm text-gray-700"
+            />
+          </div>
+
+          <p className="text-[10px] font-bold text-[#55CDFC]/70 uppercase tracking-widest mt-2">
+            Deze link verandert automatisch elke maand
+          </p>
+
+        </div>
 
         {/* 🧭 MOBILE VERTICAAL NAV - DESKTOP HORIZONTAAL + ORIGINELE STYLE */}
         <div className="w-full mb-8 lg:mb-12 max-w-full overflow-hidden">

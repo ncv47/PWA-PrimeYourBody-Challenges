@@ -27,6 +27,12 @@ const App: React.FC = () => {
   );
 };
 
+const generateMonthlyKey = () => {
+  const now = new Date();
+  const yearMonth = now.getFullYear() * 100 + (now.getMonth() + 1);
+  return String((yearMonth * 12345) % 1000000).padStart(6, '0');
+};
+
 const AppInner: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -34,23 +40,30 @@ const AppInner: React.FC = () => {
   const [isPWA, setIsPWA] = useState(false);
   const navigate = useNavigate();
 
+  const MONTHLY_KEY = generateMonthlyKey();
+
   useEffect(() => {
     const mediaQuery = window.matchMedia('(display-mode: standalone)');
-    const isStandalone = mediaQuery.matches || (navigator as any).standalone === true;
+    const isStandalone =
+      mediaQuery.matches || (navigator as any).standalone === true;
+
     setIsPWA(isStandalone);
 
     const handleChange = (e: MediaQueryListEvent) => setIsPWA(e.matches);
     mediaQuery.addEventListener('change', handleChange);
+
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
 
   const checkAdmin = async (userId: string) => {
     const supabase = getSupabase();
+
     const { data } = await supabase
       .from('users')
       .select('admin')
       .eq('id', userId)
       .maybeSingle();
+
     setIsAdmin(!!data?.admin);
   };
 
@@ -59,19 +72,23 @@ const AppInner: React.FC = () => {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+
       if (session?.user) checkAdmin(session.user.id);
+
       setLoading(false);
 
       if (isPWA && !session) {
-        navigate('/login_secret', { replace: true });
+        navigate(`/login?key=${MONTHLY_KEY}`, { replace: true });
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session?.user) checkAdmin(session.user.id);
-      else setIsAdmin(false);
-    });
+    const { data: { subscription } } =
+      supabase.auth.onAuthStateChange((_event, session) => {
+        setSession(session);
+
+        if (session?.user) checkAdmin(session.user.id);
+        else setIsAdmin(false);
+      });
 
     return () => {
       subscription.unsubscribe();
@@ -83,7 +100,7 @@ const AppInner: React.FC = () => {
       navigator.serviceWorker
         .register('/sw.js')
         .then(() => console.log('Service Worker registered'))
-        .catch(err => console.error('SW registration failed', err));
+        .catch((err) => console.error('SW registration failed', err));
     }
   }, []);
 
@@ -110,39 +127,46 @@ const AppInner: React.FC = () => {
       >
         <div className="w-full max-w-[1400px] px-4 md:px-10 py-10">
           <Routes>
-            <Route 
-              path="/" 
+
+            <Route
+              path="/"
               element={
-                isPWA && !session 
-                  ? <Navigate to="/login_secret" replace /> 
+                isPWA && !session
+                  ? <Navigate to={`/login?key=${MONTHLY_KEY}`} replace />
                   : <HomePage />
-              } 
-            />
-            <Route 
-              path="/login_secret" 
-              element={!session ? <LoginPage /> : <Navigate to="/challenges" />} 
+              }
             />
 
-            <Route 
-              path="/challenges" 
-              element={session ? <ChallengesPage /> : <Navigate to="/login_secret" />} 
+            <Route
+              path="/login"
+              element={!session ? <LoginPage /> : <Navigate to="/challenges" replace />}
             />
-            <Route 
-              path="/community" 
-              element={session ? <CommunityPage /> : <Navigate to="/login_secret" />} 
+
+            <Route
+              path="/challenges"
+              element={session ? <ChallengesPage /> : <Navigate to={`/login?key=${MONTHLY_KEY}`} />}
             />
-            <Route 
-              path="/profile" 
-              element={session ? <ProfilePage /> : <Navigate to="/login_secret" />} 
+
+            <Route
+              path="/community"
+              element={session ? <CommunityPage /> : <Navigate to={`/login?key=${MONTHLY_KEY}`} />}
             />
-            <Route 
-              path="/user/:userId" 
-              element={session ? <UserProfilePage /> : <Navigate to="/login_secret" />} 
+
+            <Route
+              path="/profile"
+              element={session ? <ProfilePage /> : <Navigate to={`/login?key=${MONTHLY_KEY}`} />}
             />
-            <Route 
-              path="/admin" 
-              element={session && isAdmin ? <AdminPage /> : <Navigate to="/challenges" />} 
+
+            <Route
+              path="/user/:userId"
+              element={session ? <UserProfilePage /> : <Navigate to={`/login?key=${MONTHLY_KEY}`} />}
             />
+
+            <Route
+              path="/admin"
+              element={session && isAdmin ? <AdminPage /> : <Navigate to="/challenges" />}
+            />
+
           </Routes>
         </div>
       </main>
@@ -158,11 +182,12 @@ const Sidebar: React.FC<{ isAdmin: boolean }> = ({ isAdmin }) => {
   const handleLogout = async () => {
     const supabase = getSupabase();
     await supabase.auth.signOut();
-    navigate('/login_secret');
+    navigate('/');
   };
 
   return (
     <aside className="hidden md:flex flex-col fixed left-0 top-0 bottom-0 w-[320px] border-r-2 border-gray-200 p-8 bg-white z-50">
+
       <div className="mb-16 px-4">
         <h1 className="text-[#55CDFC] text-3xl font-black tracking-tighter uppercase leading-none">
           Prime Your<br />
