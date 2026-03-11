@@ -284,48 +284,48 @@
 
     // ⏯️ Toggle active status
     const toggleActive = async (id: number, current: boolean) => {
-  try {
-    const supabase = getSupabase();
-    const { error, data } = await supabase
-      .from('challenges')
-      .update({ active: !current })
-      .eq('id', id)
-      .select()
-      .single();
+      try {
+        const supabase = getSupabase();
+        const { error, data } = await supabase
+          .from('challenges')
+          .update({ active: !current })
+          .eq('id', id)
+          .select()
+          .single();
 
-    if (error) throw error;
-    
-    const challenge = data as Challenge;
-    await refreshAdminData();
-    
-    // 🔔 NIEUWE NOTIFICATIE: Als nu ACTIEF gemaakt
-    if (!current) { // Van inactief -> actief
-      console.log(`🎉 Challenge ${challenge.title} geactiveerd - verstuur notificatie`);
-      sendNotification(
-        `🎉 Nieuwe Challenge: ${challenge.title}`,
-        `Week ${challenge.week} is nu LIVE! Check de app.`,
-        NOTIFICATION_TAG
-      );
-    }
-    
-    console.log(`✅ Toggle succes: ${challenge.title} -> ${challenge.active ? 'ACTIEF' : 'INACTIEF'}`);
-  } catch (error: any) {
-    console.error('Toggle error:', error);
-    globalThis.alert?.('Fout bij status update');
-  }
-};
+        if (error) throw error;
+
+        const updated = data as Challenge;
+
+        // keep existing order, just patch the one challenge
+        setChallenges(prev =>
+          prev.map(c => (c.id === id ? { ...c, active: updated.active } : c))
+        );
+
+        if (!current) {
+          sendNotification(
+            `🎉 Nieuwe Challenge: ${updated.title}`,
+            `Week ${updated.week} is nu LIVE! Check de app.`,
+            NOTIFICATION_TAG
+          );
+        }
+      } catch (error: any) {
+        console.error('Toggle error:', error);
+        globalThis.alert?.('Fout bij status update');
+      }
+    };
 
     // 📱 Notificatie helpers
-const initServiceWorker = useCallback(async () => {
-  if ('serviceWorker' in navigator) {
-    try {
-      registration = await navigator.serviceWorker.ready;
-      console.log('✅ Service Worker ready voor notificaties');
-    } catch (e) {
-      console.error('❌ Service Worker error:', e);
-    }
-  }
-}, []);
+    const initServiceWorker = useCallback(async () => {
+      if ('serviceWorker' in navigator) {
+        try {
+          registration = await navigator.serviceWorker.ready;
+          console.log('✅ Service Worker ready voor notificaties');
+        } catch (e) {
+          console.error('❌ Service Worker error:', e);
+        }
+      }
+    }, []);
 
 const sendNotification = async (title: string, body: string, tag: string) => {
   if (!registration || !('showNotification' in registration)) {
